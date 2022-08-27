@@ -22,8 +22,7 @@ GREEN = (0, 255, 0)
 STEPS = 10
 rdelta = 255 / STEPS
 # smoothly go from red to green as the speed increases
-color_bins = [[int(255 - rdelta * i), int(rdelta * i), 0] for i in
-              range(STEPS + 1)]
+color_bins = [[int(255 - rdelta * i), int(rdelta * i), 0] for i in range(STEPS + 1)]
 
 
 class TraCIVehicle(KernelVehicle):
@@ -32,9 +31,7 @@ class TraCIVehicle(KernelVehicle):
     Extends flow.core.kernel.vehicle.base.KernelVehicle
     """
 
-    def __init__(self,
-                 master_kernel,
-                 sim_params):
+    def __init__(self, master_kernel, sim_params):
         """See parent class."""
         KernelVehicle.__init__(self, master_kernel, sim_params)
 
@@ -108,13 +105,13 @@ class TraCIVehicle(KernelVehicle):
 
         self.__vehicles.clear()
         for typ in vehicles.initial:
-            for i in range(typ['num_vehicles']):
-                veh_id = '{}_{}'.format(typ['veh_id'], i)
+            for i in range(typ["num_vehicles"]):
+                veh_id = "{}_{}".format(typ["veh_id"], i)
                 self.__vehicles[veh_id] = dict()
-                self.__vehicles[veh_id]['type'] = typ['veh_id']
-                self.__vehicles[veh_id]['initial_speed'] = typ['initial_speed']
+                self.__vehicles[veh_id]["type"] = typ["veh_id"]
+                self.__vehicles[veh_id]["initial_speed"] = typ["initial_speed"]
                 self.num_vehicles += 1
-                if typ['acceleration_controller'][0] == RLController:
+                if typ["acceleration_controller"][0] == RLController:
                     self.num_rl_vehicles += 1
 
     def update(self, reset):
@@ -139,8 +136,7 @@ class TraCIVehicle(KernelVehicle):
         vehicle_obs = {}
         for veh_id in self.__ids:
             self.previous_speeds[veh_id] = self.get_speed(veh_id)
-            vehicle_obs[veh_id] = \
-                self.kernel_api.vehicle.getSubscriptionResults(veh_id)
+            vehicle_obs[veh_id] = self.kernel_api.vehicle.getSubscriptionResults(veh_id)
         sim_obs = self.kernel_api.simulation.getSubscriptionResults()
 
         arrived_rl_ids = []
@@ -190,18 +186,17 @@ class TraCIVehicle(KernelVehicle):
             self.num_not_departed = 0
 
             # add vehicles from a network template, if applicable
-            if hasattr(self.master_kernel.network.network,
-                       "template_vehicles"):
-                for veh_id in self.master_kernel.network.network. \
-                        template_vehicles:
-                    vals = deepcopy(self.master_kernel.network.network.
-                                    template_vehicles[veh_id])
+            if hasattr(self.master_kernel.network.network, "template_vehicles"):
+                for veh_id in self.master_kernel.network.network.template_vehicles:
+                    vals = deepcopy(
+                        self.master_kernel.network.network.template_vehicles[veh_id]
+                    )
                     # a step is executed during initialization, so add this sim
                     # step to the departure time of vehicles
-                    vals['depart'] = str(
-                        float(vals['depart']) + 2 * self.sim_step)
+                    vals["depart"] = str(float(vals["depart"]) + 2 * self.sim_step)
                     self.kernel_api.vehicle.addFull(
-                        veh_id, 'route{}_0'.format(veh_id), **vals)
+                        veh_id, "route{}_0".format(veh_id), **vals
+                    )
         else:
             self.time_counter += 1
             # update the "last_lc" variable
@@ -217,19 +212,19 @@ class TraCIVehicle(KernelVehicle):
             self._arrived_ids = sim_obs[tc.VAR_ARRIVED_VEHICLES_IDS]
 
             # update the number of not departed vehicles
-            self.num_not_departed += sim_obs[tc.VAR_LOADED_VEHICLES_NUMBER] - \
-                sim_obs[tc.VAR_DEPARTED_VEHICLES_NUMBER]
+            self.num_not_departed += (
+                sim_obs[tc.VAR_LOADED_VEHICLES_NUMBER]
+                - sim_obs[tc.VAR_DEPARTED_VEHICLES_NUMBER]
+            )
 
         # update the "headway", "leader", and "follower" variables
         for veh_id in self.__ids:
             try:
-                _position = vehicle_obs.get(veh_id, {}).get(
-                    tc.VAR_POSITION, -1001)
+                _position = vehicle_obs.get(veh_id, {}).get(tc.VAR_POSITION, -1001)
                 _angle = vehicle_obs.get(veh_id, {}).get(tc.VAR_ANGLE, -1001)
                 _time_step = sim_obs[tc.VAR_TIME_STEP]
                 _time_delta = sim_obs[tc.VAR_DELTA_T]
-                self.__vehicles[veh_id]["orientation"] = \
-                    list(_position) + [_angle]
+                self.__vehicles[veh_id]["orientation"] = list(_position) + [_angle]
                 self.__vehicles[veh_id]["timestep"] = _time_step
                 self.__vehicles[veh_id]["timedelta"] = _time_delta
             except TypeError:
@@ -239,8 +234,8 @@ class TraCIVehicle(KernelVehicle):
             if headway is None:
                 self.__vehicles[veh_id]["leader"] = None
                 self.__vehicles[veh_id]["follower"] = None
-                self.__vehicles[veh_id]["headway"] = 1e+3
-                self.__vehicles[veh_id]["follower_headway"] = 1e+3
+                self.__vehicles[veh_id]["headway"] = 1e3
+                self.__vehicles[veh_id]["follower_headway"] = 1e3
             else:
                 min_gap = self.minGap[self.get_type(veh_id)]
                 self.__vehicles[veh_id]["headway"] = headway[1] + min_gap
@@ -249,8 +244,10 @@ class TraCIVehicle(KernelVehicle):
                     leader = self.__vehicles[headway[0]]
                     # if veh_id is closer from leader than another follower
                     # (in case followers are in different converging edges)
-                    if ("follower_headway" not in leader or
-                            headway[1] + min_gap < leader["follower_headway"]):
+                    if (
+                        "follower_headway" not in leader
+                        or headway[1] + min_gap < leader["follower_headway"]
+                    ):
                         leader["follower"] = veh_id
                         leader["follower_headway"] = headway[1] + min_gap
 
@@ -290,28 +287,26 @@ class TraCIVehicle(KernelVehicle):
         # specify the type
         self.__vehicles[veh_id]["type"] = veh_type
 
-        car_following_params = \
-            self.type_parameters[veh_type]["car_following_params"]
+        car_following_params = self.type_parameters[veh_type]["car_following_params"]
 
         # specify the acceleration controller class
-        accel_controller = \
-            self.type_parameters[veh_type]["acceleration_controller"]
-        self.__vehicles[veh_id]["acc_controller"] = \
-            accel_controller[0](veh_id,
-                                car_following_params=car_following_params,
-                                **accel_controller[1])
+        accel_controller = self.type_parameters[veh_type]["acceleration_controller"]
+        self.__vehicles[veh_id]["acc_controller"] = accel_controller[0](
+            veh_id, car_following_params=car_following_params, **accel_controller[1]
+        )
 
         # specify the lane-changing controller class
-        lc_controller = \
-            self.type_parameters[veh_type]["lane_change_controller"]
-        self.__vehicles[veh_id]["lane_changer"] = \
-            lc_controller[0](veh_id=veh_id, **lc_controller[1])
+        lc_controller = self.type_parameters[veh_type]["lane_change_controller"]
+        self.__vehicles[veh_id]["lane_changer"] = lc_controller[0](
+            veh_id=veh_id, **lc_controller[1]
+        )
 
         # specify the routing controller class
         rt_controller = self.type_parameters[veh_type]["routing_controller"]
         if rt_controller is not None:
-            self.__vehicles[veh_id]["router"] = \
-                rt_controller[0](veh_id=veh_id, router_params=rt_controller[1])
+            self.__vehicles[veh_id]["router"] = rt_controller[0](
+                veh_id=veh_id, router_params=rt_controller[1]
+            )
         else:
             self.__vehicles[veh_id]["router"] = None
 
@@ -328,52 +323,57 @@ class TraCIVehicle(KernelVehicle):
                     self.__controlled_lc_ids.append(veh_id)
 
         # subscribe the new vehicle
-        self.kernel_api.vehicle.subscribe(veh_id, [
-            tc.VAR_LANE_INDEX, tc.VAR_LANEPOSITION,
-            tc.VAR_ROAD_ID,
-            tc.VAR_SPEED,
-            tc.VAR_EDGES,
-            tc.VAR_POSITION,
-            tc.VAR_ANGLE,
-            tc.VAR_SPEED_WITHOUT_TRACI,
-            tc.VAR_FUELCONSUMPTION,
-            tc.VAR_DISTANCE
-        ])
+        self.kernel_api.vehicle.subscribe(
+            veh_id,
+            [
+                tc.VAR_LANE_INDEX,
+                tc.VAR_LANEPOSITION,
+                tc.VAR_ROAD_ID,
+                tc.VAR_SPEED,
+                tc.VAR_EDGES,
+                tc.VAR_POSITION,
+                tc.VAR_ANGLE,
+                tc.VAR_SPEED_WITHOUT_TRACI,
+                tc.VAR_FUELCONSUMPTION,
+                tc.VAR_DISTANCE,
+            ],
+        )
         self.kernel_api.vehicle.subscribeLeader(veh_id, 2000)
 
         # some constant vehicle parameters to the vehicles class
-        self.__vehicles[veh_id]["length"] = self.kernel_api.vehicle.getLength(
-            veh_id)
+        self.__vehicles[veh_id]["length"] = self.kernel_api.vehicle.getLength(veh_id)
 
         # set the "last_lc" parameter of the vehicle
         self.__vehicles[veh_id]["last_lc"] = -float("inf")
 
         # specify the initial speed
-        self.__vehicles[veh_id]["initial_speed"] = \
-            self.type_parameters[veh_type]["initial_speed"]
+        self.__vehicles[veh_id]["initial_speed"] = self.type_parameters[veh_type][
+            "initial_speed"
+        ]
 
         # set the speed mode for the vehicle
-        speed_mode = self.type_parameters[veh_type][
-            "car_following_params"].speed_mode
+        speed_mode = self.type_parameters[veh_type]["car_following_params"].speed_mode
         self.kernel_api.vehicle.setSpeedMode(veh_id, speed_mode)
 
         # set the lane changing mode for the vehicle
-        lc_mode = self.type_parameters[veh_type][
-            "lane_change_params"].lane_change_mode
+        lc_mode = self.type_parameters[veh_type]["lane_change_params"].lane_change_mode
         self.kernel_api.vehicle.setLaneChangeMode(veh_id, lc_mode)
 
         # get initial state info
         self.__sumo_obs[veh_id] = dict()
-        self.__sumo_obs[veh_id][tc.VAR_ROAD_ID] = \
-            self.kernel_api.vehicle.getRoadID(veh_id)
-        self.__sumo_obs[veh_id][tc.VAR_LANEPOSITION] = \
-            self.kernel_api.vehicle.getLanePosition(veh_id)
-        self.__sumo_obs[veh_id][tc.VAR_LANE_INDEX] = \
-            self.kernel_api.vehicle.getLaneIndex(veh_id)
-        self.__sumo_obs[veh_id][tc.VAR_SPEED] = \
-            self.kernel_api.vehicle.getSpeed(veh_id)
-        self.__sumo_obs[veh_id][tc.VAR_FUELCONSUMPTION] = \
-            self.kernel_api.vehicle.getFuelConsumption(veh_id)
+        self.__sumo_obs[veh_id][tc.VAR_ROAD_ID] = self.kernel_api.vehicle.getRoadID(
+            veh_id
+        )
+        self.__sumo_obs[veh_id][
+            tc.VAR_LANEPOSITION
+        ] = self.kernel_api.vehicle.getLanePosition(veh_id)
+        self.__sumo_obs[veh_id][
+            tc.VAR_LANE_INDEX
+        ] = self.kernel_api.vehicle.getLaneIndex(veh_id)
+        self.__sumo_obs[veh_id][tc.VAR_SPEED] = self.kernel_api.vehicle.getSpeed(veh_id)
+        self.__sumo_obs[veh_id][
+            tc.VAR_FUELCONSUMPTION
+        ] = self.kernel_api.vehicle.getFuelConsumption(veh_id)
 
         # make sure that the order of rl_ids is kept sorted
         self.__rl_ids.sort()
@@ -501,14 +501,14 @@ class TraCIVehicle(KernelVehicle):
         """See parent class."""
         if len(self._num_departed) == 0:
             return 0
-        num_inflow = self._num_departed[-int(time_span / self.sim_step):]
+        num_inflow = self._num_departed[-int(time_span / self.sim_step) :]
         return 3600 * sum(num_inflow) / (len(num_inflow) * self.sim_step)
 
     def get_outflow_rate(self, time_span):
         """See parent class."""
         if len(self._num_arrived) == 0:
             return 0
-        num_outflow = self._num_arrived[-int(time_span / self.sim_step):]
+        num_outflow = self._num_arrived[-int(time_span / self.sim_step) :]
         return 3600 * sum(num_outflow) / (len(num_outflow) * self.sim_step)
 
     def get_num_arrived(self):
@@ -545,7 +545,10 @@ class TraCIVehicle(KernelVehicle):
         ml_to_gallons = 0.000264172
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_fuel_consumption(vehID, error) for vehID in veh_id]
-        return self.__sumo_obs.get(veh_id, {}).get(tc.VAR_FUELCONSUMPTION, error) * ml_to_gallons
+        return (
+            self.__sumo_obs.get(veh_id, {}).get(tc.VAR_FUELCONSUMPTION, error)
+            * ml_to_gallons
+        )
 
     def get_previous_speed(self, veh_id, error=-1001):
         """See parent class."""
@@ -563,8 +566,7 @@ class TraCIVehicle(KernelVehicle):
         """See parent class."""
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_default_speed(vehID, error) for vehID in veh_id]
-        return self.__sumo_obs.get(veh_id, {}).get(tc.VAR_SPEED_WITHOUT_TRACI,
-                                                   error)
+        return self.__sumo_obs.get(veh_id, {}).get(tc.VAR_SPEED_WITHOUT_TRACI, error)
 
     def get_position(self, veh_id, error=-1001):
         """See parent class."""
@@ -622,8 +624,10 @@ class TraCIVehicle(KernelVehicle):
             return [self.get_headway(vehID, error) for vehID in veh_id]
 
         if veh_id not in self.__rl_ids:
-            warnings.warn('Vehicle {} is not RL vehicle, "last_lc" term set to'
-                          ' {}.'.format(veh_id, error))
+            warnings.warn(
+                'Vehicle {} is not RL vehicle, "last_lc" term set to'
+                " {}.".format(veh_id, error)
+            )
             return error
         else:
             return self.__vehicles.get(veh_id, {}).get("headway", error)
@@ -637,18 +641,13 @@ class TraCIVehicle(KernelVehicle):
     def get_lane_changing_controller(self, veh_id, error=None):
         """See parent class."""
         if isinstance(veh_id, (list, np.ndarray)):
-            return [
-                self.get_lane_changing_controller(vehID, error)
-                for vehID in veh_id
-            ]
+            return [self.get_lane_changing_controller(vehID, error) for vehID in veh_id]
         return self.__vehicles.get(veh_id, {}).get("lane_changer", error)
 
     def get_routing_controller(self, veh_id, error=None):
         """See parent class."""
         if isinstance(veh_id, (list, np.ndarray)):
-            return [
-                self.get_routing_controller(vehID, error) for vehID in veh_id
-            ]
+            return [self.get_routing_controller(vehID, error) for vehID in veh_id]
         return self.__vehicles.get(veh_id, {}).get("router", error)
 
     def set_lane_headways(self, veh_id, lane_headways):
@@ -666,14 +665,18 @@ class TraCIVehicle(KernelVehicle):
     def get_lane_leaders_speed(self, veh_id, error=None):
         """See parent class."""
         lane_leaders = self.get_lane_leaders(veh_id)
-        return [0 if lane_leader == '' else self.get_speed(lane_leader)
-                for lane_leader in lane_leaders]
+        return [
+            0 if lane_leader == "" else self.get_speed(lane_leader)
+            for lane_leader in lane_leaders
+        ]
 
     def get_lane_followers_speed(self, veh_id, error=None):
         """See parent class."""
         lane_followers = self.get_lane_followers(veh_id)
-        return [0 if lane_follower == '' else self.get_speed(lane_follower)
-                for lane_follower in lane_followers]
+        return [
+            0 if lane_follower == "" else self.get_speed(lane_follower)
+            for lane_follower in lane_followers
+        ]
 
     def set_lane_leaders(self, veh_id, lane_leaders):
         """Set the lane leaders of the specified vehicle."""
@@ -721,12 +724,14 @@ class TraCIVehicle(KernelVehicle):
         edge_list = self.master_kernel.network.get_edge_list()
         junction_list = self.master_kernel.network.get_junction_list()
         tot_list = edge_list + junction_list
-        num_edges = (len(self.master_kernel.network.get_edge_list()) + len(
-            self.master_kernel.network.get_junction_list()))
+        num_edges = len(self.master_kernel.network.get_edge_list()) + len(
+            self.master_kernel.network.get_junction_list()
+        )
 
         # maximum number of lanes in the network
-        max_lanes = max([self.master_kernel.network.num_lanes(edge_id)
-                         for edge_id in tot_list])
+        max_lanes = max(
+            [self.master_kernel.network.num_lanes(edge_id) for edge_id in tot_list]
+        )
 
         # Key = edge id
         # Element = list, with the ith element containing tuples with the name
@@ -751,15 +756,14 @@ class TraCIVehicle(KernelVehicle):
                 for lane in range(max_lanes):
                     edge_dict[edge][lane].sort(key=lambda x: x[1])
 
-        for veh_id in self.get_rl_ids():
+        for veh_id in self.get_ids():
             # collect the lane leaders, followers, headways, and tailways for
             # each vehicle
             edge = self.get_edge(veh_id)
             if edge:
-                headways, tailways, leaders, followers = \
-                    self._multi_lane_headways_util(veh_id, edge_dict,
-                                                   num_edges)
-
+                headways, tailways, leaders, followers = self._multi_lane_headways_util(
+                    veh_id, edge_dict, num_edges
+                )
                 # add the above values to the vehicles class
                 self.set_lane_headways(veh_id, headways)
                 self.set_lane_tailways(veh_id, tailways)
@@ -831,35 +835,43 @@ class TraCIVehicle(KernelVehicle):
 
                 # if you are at the end or the front of the edge, the lane
                 # leader is in the edges in front of you
-                if (lane == this_lane and index < len(positions) - 1) \
-                        or (lane != this_lane and index < len(positions)):
+                if (lane == this_lane and index < len(positions) - 1) or (
+                    lane != this_lane and index < len(positions)
+                ):
                     # check if the index does not correspond to the current
                     # vehicle
                     if ids[index] == veh_id:
                         leader[lane] = ids[index + 1]
-                        headway[lane] = (positions[index + 1] - this_pos -
-                                         self.get_length(leader[lane]))
+                        headway[lane] = (
+                            positions[index + 1]
+                            - this_pos
+                            - self.get_length(leader[lane])
+                        )
                     else:
                         leader[lane] = ids[index]
-                        headway[lane] = (positions[index] - this_pos
-                                         - self.get_length(leader[lane]))
+                        headway[lane] = (
+                            positions[index] - this_pos - self.get_length(leader[lane])
+                        )
 
                 # you are in the back of the queue, the lane follower is in the
                 # edges behind you
                 if index > 0:
                     follower[lane] = ids[index - 1]
-                    tailway[lane] = (this_pos - positions[index - 1]
-                                     - self.get_length(veh_id))
+                    tailway[lane] = (
+                        this_pos - positions[index - 1] - self.get_length(veh_id)
+                    )
 
             # if lane leader not found, check next edges
             if leader[lane] == "":
                 headway[lane], leader[lane] = self._next_edge_leaders(
-                    veh_id, edge_dict, lane, num_edges)
+                    veh_id, edge_dict, lane, num_edges
+                )
 
             # if lane follower not found, check previous edges
             if follower[lane] == "":
                 tailway[lane], follower[lane] = self._prev_edge_followers(
-                    veh_id, edge_dict, lane, num_edges)
+                    veh_id, edge_dict, lane, num_edges
+                )
 
         return headway, tailway, leader, follower
 
@@ -895,8 +907,12 @@ class TraCIVehicle(KernelVehicle):
             try:
                 if len(edge_dict[edge][lane]) > 0:
                     leader = edge_dict[edge][lane][0][0]
-                    headway = edge_dict[edge][lane][0][1] - pos + add_length \
+                    headway = (
+                        edge_dict[edge][lane][0][1]
+                        - pos
+                        + add_length
                         - self.get_length(leader)
+                    )
             except KeyError:
                 # current edge has no vehicles, so move on
                 # print(traceback.format_exc())
@@ -939,8 +955,12 @@ class TraCIVehicle(KernelVehicle):
 
             try:
                 if len(edge_dict[edge][lane]) > 0:
-                    tailway = pos - edge_dict[edge][lane][-1][1] + add_length \
-                              - self.get_length(veh_id)
+                    tailway = (
+                        pos
+                        - edge_dict[edge][lane][-1][1]
+                        + add_length
+                        - self.get_length(veh_id)
+                    )
                     follower = edge_dict[edge][lane][-1][0]
             except KeyError:
                 # current edge has no vehicles, so move on
@@ -980,7 +1000,8 @@ class TraCIVehicle(KernelVehicle):
         # if any of the directions are not -1, 0, or 1, raise a ValueError
         if any(d not in [-1, 0, 1] for d in direction):
             raise ValueError(
-                "Direction values for lane changes may only be: -1, 0, or 1.")
+                "Direction values for lane changes may only be: -1, 0, or 1."
+            )
 
         for i, veh_id in enumerate(veh_ids):
             # check for no lane change
@@ -993,16 +1014,17 @@ class TraCIVehicle(KernelVehicle):
             this_edge = self.get_edge(veh_id)
             target_lane = min(
                 max(this_lane + direction[i], 0),
-                self.master_kernel.network.num_lanes(this_edge) - 1)
+                self.master_kernel.network.num_lanes(this_edge) - 1,
+            )
 
             # perform the requested lane action action in TraCI
             if target_lane != this_lane:
                 self.kernel_api.vehicle.changeLane(
-                    veh_id, int(target_lane), self.sim_step)
+                    veh_id, int(target_lane), self.sim_step
+                )
 
                 if veh_id in self.get_rl_ids():
-                    self.prev_last_lc[veh_id] = \
-                        self.__vehicles[veh_id]["last_lc"]
+                    self.prev_last_lc[veh_id] = self.__vehicles[veh_id]["last_lc"]
 
     def choose_routes(self, veh_ids, route_choices):
         """See parent class."""
@@ -1014,17 +1036,19 @@ class TraCIVehicle(KernelVehicle):
         for i, veh_id in enumerate(veh_ids):
             if route_choices[i] is not None:
                 self.kernel_api.vehicle.setRoute(
-                    vehID=veh_id, edgeList=route_choices[i])
+                    vehID=veh_id, edgeList=route_choices[i]
+                )
 
     def get_x_by_id(self, veh_id):
         """See parent class."""
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_x_by_id(vehID) for vehID in veh_id]
-        if self.get_edge(veh_id) == '':
+        if self.get_edge(veh_id) == "":
             # occurs when a vehicle crashes is teleported for some other reason
-            return 0.
+            return 0.0
         return self.master_kernel.network.get_x(
-            self.get_edge(veh_id), self.get_position(veh_id))
+            self.get_edge(veh_id), self.get_position(veh_id)
+        )
 
     def update_vehicle_colors(self):
         """See parent class.
@@ -1037,34 +1061,40 @@ class TraCIVehicle(KernelVehicle):
         for veh_id in self.get_rl_ids():
             try:
                 # If vehicle is already being colored via argument to vehicles.add(), don't re-color it.
-                if self._force_color_update or 'color' not in \
-                        self.type_parameters[self.get_type(veh_id)]:
+                if (
+                    self._force_color_update
+                    or "color" not in self.type_parameters[self.get_type(veh_id)]
+                ):
                     # color rl vehicles red
                     self.set_color(veh_id=veh_id, color=RED)
             except (FatalTraCIError, TraCIException) as e:
-                print('Error when updating rl vehicle colors:', e)
+                print("Error when updating rl vehicle colors:", e)
 
         # color vehicles white if not observed and cyan if observed
         for veh_id in self.get_human_ids():
             try:
                 color = CYAN if veh_id in self.get_observed_ids() else WHITE
                 # If vehicle is already being colored via argument to vehicles.add(), don't re-color it.
-                if self._force_color_update or 'color' not in \
-                        self.type_parameters[self.get_type(veh_id)]:
+                if (
+                    self._force_color_update
+                    or "color" not in self.type_parameters[self.get_type(veh_id)]
+                ):
                     self.set_color(veh_id=veh_id, color=color)
             except (FatalTraCIError, TraCIException) as e:
-                print('Error when updating human vehicle colors:', e)
+                print("Error when updating human vehicle colors:", e)
 
         for veh_id in self.get_ids():
             try:
-                if 'av' in veh_id:
+                if "av" in veh_id:
                     color = RED
                     # If vehicle is already being colored via argument to vehicles.add(), don't re-color it.
-                    if self._force_color_update or 'color' not in \
-                            self.type_parameters[self.get_type(veh_id)]:
+                    if (
+                        self._force_color_update
+                        or "color" not in self.type_parameters[self.get_type(veh_id)]
+                    ):
                         self.set_color(veh_id=veh_id, color=color)
             except (FatalTraCIError, TraCIException) as e:
-                print('Error when updating human vehicle colors:', e)
+                print("Error when updating human vehicle colors:", e)
 
         # color vehicles by speed if desired
         if self._color_by_speed:
@@ -1074,8 +1104,10 @@ class TraCIVehicle(KernelVehicle):
                 veh_speed = self.get_speed(veh_id)
                 bin_index = np.digitize(veh_speed, speed_ranges)
                 # If vehicle is already being colored via argument to vehicles.add(), don't re-color it.
-                if self._force_color_update or 'color' not in \
-                        self.type_parameters[self.get_type(veh_id)]:
+                if (
+                    self._force_color_update
+                    or "color" not in self.type_parameters[self.get_type(veh_id)]
+                ):
                     self.set_color(veh_id=veh_id, color=color_bins[bin_index])
 
         # clear the list of observed vehicles
@@ -1096,20 +1128,21 @@ class TraCIVehicle(KernelVehicle):
         The last term for sumo (transparency) is set to 255.
         """
         r, g, b = color
-        self.kernel_api.vehicle.setColor(
-            vehID=veh_id, color=(r, g, b, 255))
+        self.kernel_api.vehicle.setColor(vehID=veh_id, color=(r, g, b, 255))
 
     def add(self, veh_id, type_id, edge, pos, lane, speed):
         """See parent class."""
         if veh_id in self.master_kernel.network.rts:
             # If the vehicle has its own route, use that route. This is used in
             # the case of network templates.
-            route_id = 'route{}_0'.format(veh_id)
+            route_id = "route{}_0".format(veh_id)
         else:
             num_routes = len(self.master_kernel.network.rts[edge])
             frac = [val[1] for val in self.master_kernel.network.rts[edge]]
-            route_id = 'route{}_{}'.format(edge, np.random.choice(
-                [i for i in range(num_routes)], size=1, p=frac)[0])
+            route_id = "route{}_{}".format(
+                edge,
+                np.random.choice([i for i in range(num_routes)], size=1, p=frac)[0],
+            )
 
         self.kernel_api.vehicle.addFull(
             veh_id,
@@ -1117,7 +1150,8 @@ class TraCIVehicle(KernelVehicle):
             typeID=str(type_id),
             departLane=str(lane),
             departPos=str(pos),
-            departSpeed=str(speed))
+            departSpeed=str(speed),
+        )
 
     def get_max_speed(self, veh_id, error=-1001):
         """See parent class."""
@@ -1131,15 +1165,15 @@ class TraCIVehicle(KernelVehicle):
 
     def get_accel(self, veh_id, noise=True, failsafe=True):
         """See parent class."""
-        metric_name = 'accel'
+        metric_name = "accel"
         if noise:
-            metric_name += '_with_noise'
+            metric_name += "_with_noise"
         else:
-            metric_name += '_no_noise'
+            metric_name += "_no_noise"
         if failsafe:
-            metric_name += '_with_falsafe'
+            metric_name += "_with_falsafe"
         else:
-            metric_name += '_no_failsafe'
+            metric_name += "_no_failsafe"
 
         if metric_name not in self.__vehicles[veh_id]:
             self.__vehicles[veh_id][metric_name] = None
@@ -1147,15 +1181,15 @@ class TraCIVehicle(KernelVehicle):
 
     def update_accel(self, veh_id, accel, noise=True, failsafe=True):
         """See parent class."""
-        metric_name = 'accel'
+        metric_name = "accel"
         if noise:
-            metric_name += '_with_noise'
+            metric_name += "_with_noise"
         else:
-            metric_name += '_no_noise'
+            metric_name += "_no_noise"
         if failsafe:
-            metric_name += '_with_falsafe'
+            metric_name += "_with_falsafe"
         else:
-            metric_name += '_no_failsafe'
+            metric_name += "_no_failsafe"
 
         self.__vehicles[veh_id][metric_name] = accel
 
@@ -1163,7 +1197,9 @@ class TraCIVehicle(KernelVehicle):
         """See parent class."""
         if self.get_distance(veh_id) == 0:
             return 0
-        return (self.get_speed(veh_id) - self.get_previous_speed(veh_id)) / self.sim_step
+        return (
+            self.get_speed(veh_id) - self.get_previous_speed(veh_id)
+        ) / self.sim_step
 
     def get_2d_position(self, veh_id, error=-1001):
         """See parent class."""
