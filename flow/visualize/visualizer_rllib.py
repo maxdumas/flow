@@ -49,7 +49,7 @@ def visualizer_rllib(args):
     """
     result_dir = args.result_dir if args.result_dir[-1] != "/" else args.result_dir[:-1]
 
-    config = get_rllib_config(result_dir)
+    config = get_rllib_pkl(result_dir)
 
     # check if we have a multiagent environment but in a
     # backwards compatible way
@@ -149,8 +149,8 @@ def visualizer_rllib(args):
 
     # create the agent that will be used to compute the actions
     agent = agent_cls(env=env_name, config=config)
-    checkpoint = result_dir + "/checkpoint_" + args.checkpoint_num
-    checkpoint = checkpoint + "/checkpoint-" + args.checkpoint_num
+    checkpoint = f"{result_dir}/checkpoint_{args.checkpoint_num:0>6}"
+    checkpoint = f"{checkpoint}/checkpoint-{args.checkpoint_num}"
     agent.restore(checkpoint)
 
     if hasattr(agent, "local_evaluator") and os.environ.get("TEST_FLAG") != "True":
