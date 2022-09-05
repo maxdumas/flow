@@ -61,8 +61,10 @@ def make_create_env(params, version=0, render=None):
     exp_tag = params["exp_tag"]
 
     if isinstance(params["env_name"], str):
-        print("""Passing of strings for env_name will be deprecated.
-        Please pass the Env instance instead.""")
+        print(
+            """Passing of strings for env_name will be deprecated.
+        Please pass the Env instance instead."""
+        )
         base_env_name = params["env_name"]
     else:
         base_env_name = params["env_name"].__name__
@@ -75,21 +77,23 @@ def make_create_env(params, version=0, render=None):
     env_name = "{}-v{}".format(base_env_name, version)
 
     if isinstance(params["network"], str):
-        print("""Passing of strings for network will be deprecated.
-        Please pass the Network instance instead.""")
+        print(
+            """Passing of strings for network will be deprecated.
+        Please pass the Network instance instead."""
+        )
         module = __import__("flow.networks", fromlist=[params["network"]])
         network_class = getattr(module, params["network"])
     else:
         network_class = params["network"]
 
-    env_params = params['env']
-    net_params = params['net']
-    initial_config = params.get('initial', InitialConfig())
+    env_params = params["env"]
+    net_params = params["net"]
+    initial_config = params.get("initial", InitialConfig())
     traffic_lights = params.get("tls", TrafficLightParams())
 
     def create_env(*_):
-        sim_params = deepcopy(params['sim'])
-        vehicles = deepcopy(params['veh'])
+        sim_params = deepcopy(params["sim"])
+        vehicles = deepcopy(params["veh"])
 
         network = network_class(
             name=exp_tag,
@@ -104,17 +108,18 @@ def make_create_env(params, version=0, render=None):
 
         # check if the environment is a single or multiagent environment, and
         # get the right address accordingly
-        single_agent_envs = [env for env in dir(flow.envs)
-                             if not env.startswith('__')]
+        single_agent_envs = [env for env in dir(flow.envs) if not env.startswith("__")]
 
         if isinstance(params["env_name"], str):
-            if params['env_name'] in single_agent_envs:
-                env_loc = 'flow.envs'
+            if params["env_name"] in single_agent_envs:
+                env_loc = "flow.envs"
             else:
-                env_loc = 'flow.envs.multiagent'
-            entry_point = env_loc + ':{}'.format(params["env_name"])
+                env_loc = "flow.envs.multiagent"
+            entry_point = env_loc + ":{}".format(params["env_name"])
         else:
-            entry_point = params["env_name"].__module__ + ':' + params["env_name"].__name__
+            entry_point = (
+                params["env_name"].__module__ + ":" + params["env_name"].__name__
+            )
 
         # register the environment with OpenAI gym
         register(
@@ -124,12 +129,13 @@ def make_create_env(params, version=0, render=None):
                 "env_params": env_params,
                 "sim_params": sim_params,
                 "network": network,
-                "simulator": params['simulator']
-            })
+                "simulator": params["simulator"],
+            },
+        )
 
         return gym.envs.make(env_name)
 
-    return create_env, env_name
+    return env_name, create_env
 
 
 def env_constructor(params, version=0, render=None):

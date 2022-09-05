@@ -96,7 +96,6 @@
   "remote_env_batch_wait_ms": 0,
   "remote_worker_envs": false,
   "sample_async": false,
-  "sample_batch_size": 200,
   "seed": null,
   "sgd_minibatch_size": 128,
   "shuffle_buffer_size": 0,

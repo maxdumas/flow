@@ -122,7 +122,7 @@ def visualizer_rllib(args):
         sim_params.save_render = True
 
     # Create and register a gym+rllib env
-    create_env, env_name = make_create_env(params=flow_params, version=0)
+    env_name, create_env = make_create_env(params=flow_params, version=0)
     register_env(env_name, create_env)
 
     # check if the environment is a single or multiagent environment, and
