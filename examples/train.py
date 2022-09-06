@@ -30,39 +30,49 @@ def parse_args(args):
     parser = argparse.ArgumentParser(
         formatter_class=argparse.RawDescriptionHelpFormatter,
         description="Parse argument used when running a Flow simulation.",
-        epilog="python train.py EXP_CONFIG")
+        epilog="python train.py EXP_CONFIG",
+    )
 
     # required input parameters
     parser.add_argument(
-        'exp_config', type=str,
-        help='Name of the experiment configuration file, as located in '
-             'exp_configs/rl/singleagent or exp_configs/rl/multiagent.')
+        "exp_config",
+        type=str,
+        help="Name of the experiment configuration file, as located in "
+        "exp_configs/rl/singleagent or exp_configs/rl/multiagent.",
+    )
 
     # optional input parameters
     parser.add_argument(
-        '--rl_trainer', type=str, default="rllib",
-        help='the RL trainer to use. either rllib or Stable-Baselines')
+        "--rl_trainer",
+        type=str,
+        default="rllib",
+        help="the RL trainer to use. either rllib or Stable-Baselines",
+    )
 
+    parser.add_argument("--num_cpus", type=int, default=1, help="How many CPUs to use")
     parser.add_argument(
-        '--num_cpus', type=int, default=1,
-        help='How many CPUs to use')
+        "--num_steps",
+        type=int,
+        default=5000,
+        help="How many total steps to perform learning over",
+    )
     parser.add_argument(
-        '--num_steps', type=int, default=5000,
-        help='How many total steps to perform learning over')
+        "--rollout_size",
+        type=int,
+        default=1000,
+        help="How many steps are in a training batch.",
+    )
     parser.add_argument(
-        '--rollout_size', type=int, default=1000,
-        help='How many steps are in a training batch.')
-    parser.add_argument(
-        '--checkpoint_path', type=str, default=None,
-        help='Directory with checkpoint to restore training from.')
+        "--checkpoint_path",
+        type=str,
+        default=None,
+        help="Directory with checkpoint to restore training from.",
+    )
 
     return parser.parse_known_args(args)[0]
 
 
-def run_model_stablebaseline(flow_params,
-                             num_cpus=1,
-                             rollout_size=50,
-                             num_steps=50):
+def run_model_stablebaseline(flow_params, num_cpus=1, rollout_size=50, num_steps=50):
     """Run the model for num_steps if provided.
 
     Parameters
@@ -90,20 +100,23 @@ def run_model_stablebaseline(flow_params,
         # The algorithms require a vectorized environment to run
         env = DummyVecEnv([lambda: constructor])
     else:
-        env = SubprocVecEnv([env_constructor(params=flow_params, version=i)
-                             for i in range(num_cpus)])
+        env = SubprocVecEnv(
+            [env_constructor(params=flow_params, version=i) for i in range(num_cpus)]
+        )
 
-    train_model = PPO2('MlpPolicy', env, verbose=1, n_steps=rollout_size)
+    train_model = PPO2("MlpPolicy", env, verbose=1, n_steps=rollout_size)
     train_model.learn(total_timesteps=num_steps)
     return train_model
 
 
-def setup_exps_rllib(flow_params,
-                     n_cpus,
-                     n_rollouts,
-                     policy_graphs=None,
-                     policy_mapping_fn=None,
-                     policies_to_train=None):
+def setup_exps_rllib(
+    flow_params,
+    n_cpus,
+    n_rollouts,
+    policy_graphs=None,
+    policy_mapping_fn=None,
+    policies_to_train=None,
+):
     """Return the relevant components of an RLlib experiment.
 
     Parameters
@@ -132,17 +145,14 @@ def setup_exps_rllib(flow_params,
     """
     from ray import tune
     from ray.tune.registry import register_env
-    try:
-        from ray.rllib.agents.agent import get_agent_class
-    except ImportError:
-        from ray.rllib.agents.registry import get_agent_class
+    from ray.rllib.algorithms.ppo import PPO, DEFAULT_CONFIG
 
-    horizon = flow_params['env'].horizon
+    horizon = flow_params["env"].horizon
 
     alg_run = "PPO"
 
-    agent_cls = get_agent_class(alg_run)
-    config = deepcopy(agent_cls._default_config)
+    agent_cls = PPO
+    config = DEFAULT_CONFIG.copy()
 
     config["num_workers"] = n_cpus
     config["train_batch_size"] = horizon * n_rollouts
@@ -155,22 +165,20 @@ def setup_exps_rllib(flow_params,
     config["horizon"] = horizon
 
     # save the flow params for replay
-    flow_json = json.dumps(
-        flow_params, cls=FlowParamsEncoder, sort_keys=True, indent=4)
-    config['env_config']['flow_params'] = flow_json
-    config['env_config']['run'] = alg_run
+    flow_json = json.dumps(flow_params, cls=FlowParamsEncoder, sort_keys=True, indent=4)
+    config["env_config"]["flow_params"] = flow_json
+    config["env_config"]["run"] = alg_run
 
     # multiagent configuration
     if policy_graphs is not None:
         print("policy_graphs", policy_graphs)
-        config['multiagent'].update({'policies': policy_graphs})
+        config["multiagent"].update({"policies": policy_graphs})
     if policy_mapping_fn is not None:
-        config['multiagent'].update(
-            {'policy_mapping_fn': tune.function(policy_mapping_fn)})
+        config["multiagent"].update({"policy_mapping_fn": policy_mapping_fn})
     if policies_to_train is not None:
-        config['multiagent'].update({'policies_to_train': policies_to_train})
+        config["multiagent"].update({"policies_to_train": policies_to_train})
 
-    create_env, gym_name = make_create_env(params=flow_params)
+    gym_name, create_env = make_create_env(params=flow_params)
 
     # Register as rllib env
     register_env(gym_name, create_env)
@@ -190,16 +198,19 @@ def train_rllib(submodule, flags):
     policies_to_train = getattr(submodule, "policies_to_train", None)
 
     alg_run, gym_name, config = setup_exps_rllib(
-        flow_params, n_cpus, n_rollouts,
-        policy_graphs, policy_mapping_fn, policies_to_train)
+        flow_params,
+        n_cpus,
+        n_rollouts,
+        policy_graphs,
+        policy_mapping_fn,
+        policies_to_train,
+    )
 
     ray.init(num_cpus=n_cpus + 1, object_store_memory=200 * 1024 * 1024)
     exp_config = {
         "run": alg_run,
         "env": gym_name,
-        "config": {
-            **config
-        },
+        "config": {**config},
         "checkpoint_freq": 20,
         "checkpoint_at_end": True,
         "max_failures": 999,
@@ -209,7 +220,7 @@ def train_rllib(submodule, flags):
     }
 
     if flags.checkpoint_path is not None:
-        exp_config['restore'] = flags.checkpoint_path
+        exp_config["restore"] = flags.checkpoint_path
     run_experiments({flow_params["exp_tag"]: exp_config})
 
 
@@ -232,23 +243,27 @@ def train_h_baselines(env_name, args, multiagent):
         now = strftime("%Y-%m-%d-%H:%M:%S")
 
         # Create a save directory folder (if it doesn't exist).
-        dir_name = os.path.join(base_dir, '{}/{}'.format(args.env_name, now))
+        dir_name = os.path.join(base_dir, "{}/{}".format(args.env_name, now))
         ensure_dir(dir_name)
 
         # Get the policy class.
         if args.alg == "TD3":
             if multiagent:
                 from hbaselines.multi_fcnet.td3 import MultiFeedForwardPolicy
+
                 policy = MultiFeedForwardPolicy
             else:
                 from hbaselines.fcnet.td3 import FeedForwardPolicy
+
                 policy = FeedForwardPolicy
         elif args.alg == "SAC":
             if multiagent:
                 from hbaselines.multi_fcnet.sac import MultiFeedForwardPolicy
+
                 policy = MultiFeedForwardPolicy
             else:
                 from hbaselines.fcnet.sac import FeedForwardPolicy
+
                 policy = FeedForwardPolicy
         else:
             raise ValueError("Unknown algorithm: {}".format(args.alg))
@@ -258,14 +273,14 @@ def train_h_baselines(env_name, args, multiagent):
 
         # Add the seed for logging purposes.
         params_with_extra = hp.copy()
-        params_with_extra['seed'] = seed
-        params_with_extra['env_name'] = args.env_name
-        params_with_extra['policy_name'] = policy.__name__
-        params_with_extra['algorithm'] = args.alg
-        params_with_extra['date/time'] = now
+        params_with_extra["seed"] = seed
+        params_with_extra["env_name"] = args.env_name
+        params_with_extra["policy_name"] = policy.__name__
+        params_with_extra["algorithm"] = args.alg
+        params_with_extra["date/time"] = now
 
         # Add the hyperparameters to the folder.
-        with open(os.path.join(dir_name, 'hyperparameters.json'), 'w') as f:
+        with open(os.path.join(dir_name, "hyperparameters.json"), "w") as f:
             json.dump(params_with_extra, f, sort_keys=True, indent=4)
 
         # Create the algorithm object.
@@ -295,42 +310,42 @@ def train_stable_baselines(submodule, flags):
 
     flow_params = submodule.flow_params
     # Path to the saved files
-    exp_tag = flow_params['exp_tag']
-    result_name = '{}/{}'.format(exp_tag, strftime("%Y-%m-%d-%H:%M:%S"))
+    exp_tag = flow_params["exp_tag"]
+    result_name = "{}/{}".format(exp_tag, strftime("%Y-%m-%d-%H:%M:%S"))
 
     # Perform training.
-    print('Beginning training.')
+    print("Beginning training.")
     model = run_model_stablebaseline(
-        flow_params, flags.num_cpus, flags.rollout_size, flags.num_steps)
+        flow_params, flags.num_cpus, flags.rollout_size, flags.num_steps
+    )
 
     # Save the model to a desired folder and then delete it to demonstrate
     # loading.
-    print('Saving the trained model!')
-    path = os.path.realpath(os.path.expanduser('~/baseline_results'))
+    print("Saving the trained model!")
+    path = os.path.realpath(os.path.expanduser("~/baseline_results"))
     ensure_dir(path)
     save_path = os.path.join(path, result_name)
     model.save(save_path)
 
     # dump the flow params
-    with open(os.path.join(path, result_name) + '.json', 'w') as outfile:
-        json.dump(flow_params, outfile,
-                  cls=FlowParamsEncoder, sort_keys=True, indent=4)
+    with open(os.path.join(path, result_name) + ".json", "w") as outfile:
+        json.dump(flow_params, outfile, cls=FlowParamsEncoder, sort_keys=True, indent=4)
 
     # Replay the result by loading the model
-    print('Loading the trained model and testing it out!')
+    print("Loading the trained model and testing it out!")
     model = PPO2.load(save_path)
-    flow_params = get_flow_params(os.path.join(path, result_name) + '.json')
-    flow_params['sim'].render = True
+    flow_params = get_flow_params(os.path.join(path, result_name) + ".json")
+    flow_params["sim"].render = True
     env = env_constructor(params=flow_params, version=0)()
     # The algorithms require a vectorized environment to run
     eval_env = DummyVecEnv([lambda: env])
     obs = eval_env.reset()
     reward = 0
-    for _ in range(flow_params['env'].horizon):
+    for _ in range(flow_params["env"].horizon):
         action, _states = model.predict(obs)
         obs, rewards, dones, info = eval_env.step(action)
         reward += rewards
-    print('the final reward is {}'.format(reward))
+    print("the final reward is {}".format(reward))
 
 
 def main(args):
@@ -339,10 +354,8 @@ def main(args):
     flags = parse_args(args)
 
     # Import relevant information from the exp_config script.
-    module = __import__(
-        "exp_configs.rl.singleagent", fromlist=[flags.exp_config])
-    module_ma = __import__(
-        "exp_configs.rl.multiagent", fromlist=[flags.exp_config])
+    module = __import__("exp_configs.rl.singleagent", fromlist=[flags.exp_config])
+    module_ma = __import__("exp_configs.rl.multiagent", fromlist=[flags.exp_config])
 
     # Import the sub-module containing the specified exp_config and determine
     # whether the environment is single agent or multi-agent.
@@ -351,10 +364,11 @@ def main(args):
         multiagent = False
     elif hasattr(module_ma, flags.exp_config):
         submodule = getattr(module_ma, flags.exp_config)
-        assert flags.rl_trainer.lower() in ["rllib", "h-baselines"], \
-            "Currently, multiagent experiments are only supported through "\
-            "RLlib. Try running this experiment using RLlib: " \
+        assert flags.rl_trainer.lower() in ["rllib", "h-baselines"], (
+            "Currently, multiagent experiments are only supported through "
+            "RLlib. Try running this experiment using RLlib: "
             "'python train.py EXP_CONFIG'"
+        )
         multiagent = True
     else:
         raise ValueError("Unable to find experiment config.")
@@ -367,8 +381,10 @@ def main(args):
     elif flags.rl_trainer.lower() == "h-baselines":
         train_h_baselines(flags.exp_config, args, multiagent)
     else:
-        raise ValueError("rl_trainer should be either 'rllib', 'h-baselines', "
-                         "or 'stable-baselines'.")
+        raise ValueError(
+            "rl_trainer should be either 'rllib', 'h-baselines', "
+            "or 'stable-baselines'."
+        )
 
 
 if __name__ == "__main__":

@@ -1,44 +1,35 @@
-"""Figure eight example."""
-from flow.core.params import SumoParams, EnvParams, InitialConfig, NetParams
+"""Example of a figure 8 network with human-driven vehicles.
+
+Right-of-way dynamics near the intersection causes vehicles to queue up on
+either side of the intersection, leading to a significant reduction in the
+average speed of vehicles in the network.
+"""
+from flow.controllers import IDMController, StaticLaneChanger, ContinuousRouter
+from flow.core.params import SumoParams, EnvParams, NetParams
 from flow.core.params import VehicleParams, SumoCarFollowingParams
-from flow.controllers import IDMController, ContinuousRouter, RLController
+from flow.envs.ring.accel import ADDITIONAL_ENV_PARAMS
 from flow.networks.figure_eight import ADDITIONAL_NET_PARAMS
 from flow.envs import AccelEnv
 from flow.networks import FigureEightNetwork
 
-# time horizon of a single rollout
-HORIZON = 1500
-# number of rollouts per training iteration
-N_ROLLOUTS = 20
-# number of parallel workers
-N_CPUS = 2
-
-# We place one autonomous vehicle and 13 human-driven vehicles in the network
 vehicles = VehicleParams()
 vehicles.add(
-    veh_id="human",
-    acceleration_controller=(IDMController, {"noise": 0.2}),
+    veh_id="idm",
+    acceleration_controller=(IDMController, {}),
+    lane_change_controller=(StaticLaneChanger, {}),
     routing_controller=(ContinuousRouter, {}),
     car_following_params=SumoCarFollowingParams(
         speed_mode="obey_safe_speed",
         decel=1.5,
     ),
-    num_vehicles=13,
+    initial_speed=0,
+    num_vehicles=20,
 )
-vehicles.add(
-    veh_id="rl",
-    acceleration_controller=(RLController, {}),
-    routing_controller=(ContinuousRouter, {}),
-    car_following_params=SumoCarFollowingParams(
-        speed_mode="obey_safe_speed",
-        decel=1.5,
-    ),
-    num_vehicles=1,
-)
+
 
 flow_params = dict(
     # name of the experiment
-    exp_tag="singleagent_figure_eight",
+    exp_tag="figure8",
     # name of the flow environment the experiment is running on
     env_name=AccelEnv,
     # name of the network class the experiment is running on
@@ -47,12 +38,11 @@ flow_params = dict(
     simulator="traci",
     # sumo-related parameters (see flow.core.params.SumoParams)
     sim=SumoParams(
-        sim_step=0.1,
-        render=False,
+        render=True,
     ),
     # environment related parameters (see flow.core.params.EnvParams)
     env=EnvParams(
-        horizon=HORIZON,
+        horizon=1500,
         additional_params={
             "target_velocity": 20,
             "max_accel": 3,
@@ -63,12 +53,9 @@ flow_params = dict(
     # network-related parameters (see flow.core.params.NetParams and the
     # network's documentation or ADDITIONAL_NET_PARAMS component)
     net=NetParams(
-        additional_params=ADDITIONAL_NET_PARAMS.copy(),
+        additional_params={**ADDITIONAL_NET_PARAMS},
     ),
     # vehicles to be placed in the network at the start of a rollout (see
     # flow.core.params.VehicleParams)
     veh=vehicles,
-    # parameters specifying the positioning of vehicles upon initialization/
-    # reset (see flow.core.params.InitialConfig)
-    initial=InitialConfig(),
 )

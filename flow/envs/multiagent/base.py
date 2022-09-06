@@ -60,18 +60,20 @@ class MultiEnv(MultiAgentEnv, Env):
                     action = accel_contr.get_action(self)
                     accel.append(action)
                 self.k.vehicle.apply_acceleration(
-                    self.k.vehicle.get_controlled_ids(), accel)
+                    self.k.vehicle.get_controlled_ids(), accel
+                )
 
             # perform lane change actions for controlled human-driven vehicles
             if len(self.k.vehicle.get_controlled_lc_ids()) > 0:
                 direction = []
                 for veh_id in self.k.vehicle.get_controlled_lc_ids():
                     target_lane = self.k.vehicle.get_lane_changing_controller(
-                        veh_id).get_action(self)
+                        veh_id
+                    ).get_action(self)
                     direction.append(target_lane)
                 self.k.vehicle.apply_lane_change(
-                    self.k.vehicle.get_controlled_lc_ids(),
-                    direction=direction)
+                    self.k.vehicle.get_controlled_lc_ids(), direction=direction
+                )
 
             # perform (optionally) routing actions for all vehicle in the
             # network, including rl and sumo-controlled vehicles
@@ -106,13 +108,15 @@ class MultiEnv(MultiAgentEnv, Env):
                 break
 
         states = self.get_state()
-        done = {key: key in self.k.vehicle.get_arrived_ids()
-                for key in states.keys()}
-        if crash or (self.time_counter >= self.env_params.sims_per_step *
-                     (self.env_params.warmup_steps + self.env_params.horizon)):
-            done['__all__'] = True
+        done = {key: key in self.k.vehicle.get_arrived_ids() for key in states.keys()}
+        if crash or (
+            self.time_counter
+            >= self.env_params.sims_per_step
+            * (self.env_params.warmup_steps + self.env_params.horizon)
+        ):
+            done["__all__"] = True
         else:
-            done['__all__'] = False
+            done["__all__"] = False
         infos = {key: {} for key in states.keys()}
 
         # compute the reward
@@ -156,8 +160,10 @@ class MultiEnv(MultiAgentEnv, Env):
             self.restart_simulation(self.sim_params)
 
         # warn about not using restart_instance when using inflows
-        if len(self.net_params.inflows.get()) > 0 and \
-                not self.sim_params.restart_instance:
+        if (
+            len(self.net_params.inflows.get()) > 0
+            and not self.sim_params.restart_instance
+        ):
             print(
                 "**********************************************************\n"
                 "**********************************************************\n"
@@ -170,8 +176,9 @@ class MultiEnv(MultiAgentEnv, Env):
                 "**********************************************************"
             )
 
-        if self.sim_params.restart_instance or \
-                (self.step_counter > 2e6 and self.simulator != 'aimsun'):
+        if self.sim_params.restart_instance or (
+            self.step_counter > 2e6 and self.simulator != "aimsun"
+        ):
             self.step_counter = 0
             # issue a random seed to induce randomness into the next rollout
             self.sim_params.seed = random.randint(0, 1e5)
@@ -186,7 +193,7 @@ class MultiEnv(MultiAgentEnv, Env):
             self.setup_initial_state()
 
         # clear all vehicles from the network and the vehicles class
-        if self.simulator == 'traci':
+        if self.simulator == "traci":
             for veh_id in self.k.kernel_api.vehicle.getIDList():  # FIXME: hack
                 try:
                     self.k.vehicle.remove(veh_id)
@@ -210,8 +217,7 @@ class MultiEnv(MultiAgentEnv, Env):
 
         # reintroduce the initial vehicles to the network
         for veh_id in self.initial_ids:
-            type_id, edge, lane_index, pos, speed = \
-                self.initial_state[veh_id]
+            type_id, edge, lane_index, pos, speed = self.initial_state[veh_id]
 
             try:
                 self.k.vehicle.add(
@@ -220,12 +226,13 @@ class MultiEnv(MultiAgentEnv, Env):
                     edge=edge,
                     lane=lane_index,
                     pos=pos,
-                    speed=speed)
+                    speed=speed,
+                )
             except (FatalTraCIError, TraCIException):
                 # if a vehicle was not removed in the first attempt, remove it
                 # now and then reintroduce it
                 self.k.vehicle.remove(veh_id)
-                if self.simulator == 'traci':
+                if self.simulator == "traci":
                     self.k.kernel_api.vehicle.remove(veh_id)  # FIXME: hack
                 self.k.vehicle.add(
                     veh_id=veh_id,
@@ -233,7 +240,8 @@ class MultiEnv(MultiAgentEnv, Env):
                     edge=edge,
                     lane=lane_index,
                     pos=pos,
-                    speed=speed)
+                    speed=speed,
+                )
 
         # advance the simulation in the simulator by one step
         self.k.simulation.simulation_step()
@@ -248,11 +256,14 @@ class MultiEnv(MultiAgentEnv, Env):
         # check to make sure all vehicles have been spawned
         if len(self.initial_ids) > self.k.vehicle.num_vehicles:
             missing_vehicles = list(
-                set(self.initial_ids) - set(self.k.vehicle.get_ids()))
-            msg = '\nNot enough vehicles have spawned! Bad start?\n' \
-                  'Missing vehicles / initial state:\n'
+                set(self.initial_ids) - set(self.k.vehicle.get_ids())
+            )
+            msg = (
+                "\nNot enough vehicles have spawned! Bad start?\n"
+                "Missing vehicles / initial state:\n"
+            )
             for veh_id in missing_vehicles:
-                msg += '- {}: {}\n'.format(veh_id, self.initial_state[veh_id])
+                msg += "- {}: {}\n".format(veh_id, self.initial_state[veh_id])
             raise FatalFlowError(msg=msg)
 
         # perform (optional) warm-up steps before training
@@ -260,7 +271,7 @@ class MultiEnv(MultiAgentEnv, Env):
             observation, _, _, _ = self.step(rl_actions=None)
 
         # render a frame
-        self.render(reset=True)
+        self.render()
 
         return self.get_state()
 
@@ -288,9 +299,8 @@ class MultiEnv(MultiAgentEnv, Env):
         if isinstance(self.action_space, Box):
             for key, action in rl_actions.items():
                 rl_actions[key] = np.clip(
-                    action,
-                    a_min=self.action_space.low,
-                    a_max=self.action_space.high)
+                    action, a_min=self.action_space.low, a_max=self.action_space.high
+                )
         return rl_actions
 
     def apply_rl_actions(self, rl_actions=None):

@@ -11,7 +11,12 @@ HORIZON = 1500
 # number of rollouts per training iteration
 N_ROLLOUTS = 20
 # number of parallel workers
-N_CPUS = 2
+N_CPUS = 10
+
+# Number of vehicles. We want to test 10% AV penetration and 20% AV penetration
+# 10% penetration
+N_HUMANS = 18
+N_AVS = 2
 
 # We place one autonomous vehicle and 13 human-driven vehicles in the network
 vehicles = VehicleParams()
@@ -23,7 +28,7 @@ vehicles.add(
         speed_mode="obey_safe_speed",
         decel=1.5,
     ),
-    num_vehicles=13,
+    num_vehicles=N_HUMANS,
 )
 vehicles.add(
     veh_id="rl",
@@ -33,12 +38,12 @@ vehicles.add(
         speed_mode="obey_safe_speed",
         decel=1.5,
     ),
-    num_vehicles=1,
+    num_vehicles=N_AVS,
 )
 
 flow_params = dict(
     # name of the experiment
-    exp_tag="singleagent_figure_eight",
+    exp_tag="av4sg_singleagent_figure_eight",
     # name of the flow environment the experiment is running on
     env_name=AccelEnv,
     # name of the network class the experiment is running on
