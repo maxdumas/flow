@@ -7,39 +7,43 @@ from flow.envs import AccelEnv
 from flow.networks import FigureEightNetwork
 
 # time horizon of a single rollout
-HORIZON = 1500
+HORIZON = 5000
 # number of rollouts per training iteration
-N_ROLLOUTS = 20
+N_ROLLOUTS = 2
 # number of parallel workers
 N_CPUS = 10
 
 # Number of vehicles. We want to test 10% AV penetration and 20% AV penetration
-# 10% penetration
-N_HUMANS = 18
-N_AVS = 2
+# 25% penetration
+N_VEHICLES = 20
 
 # We place one autonomous vehicle and 13 human-driven vehicles in the network
 vehicles = VehicleParams()
-vehicles.add(
-    veh_id="human",
-    acceleration_controller=(IDMController, {"noise": 0.2}),
-    routing_controller=(ContinuousRouter, {}),
-    car_following_params=SumoCarFollowingParams(
-        speed_mode="obey_safe_speed",
-        decel=1.5,
-    ),
-    num_vehicles=N_HUMANS,
-)
-vehicles.add(
-    veh_id="rl",
-    acceleration_controller=(RLController, {}),
-    routing_controller=(ContinuousRouter, {}),
-    car_following_params=SumoCarFollowingParams(
-        speed_mode="obey_safe_speed",
-        decel=1.5,
-    ),
-    num_vehicles=N_AVS,
-)
+
+for i in range(N_VEHICLES):
+    if i in {0, 5, 10, 15}:
+        vehicles.add(
+            veh_id=f"rl_{i}",
+            acceleration_controller=(RLController, {}),
+            routing_controller=(ContinuousRouter, {}),
+            car_following_params=SumoCarFollowingParams(
+                speed_mode="obey_safe_speed",
+                decel=1.5,
+            ),
+            num_vehicles=1,
+        )
+    else:
+        vehicles.add(
+            veh_id=f"human_{i}",
+            acceleration_controller=(IDMController, {"noise": 0.2}),
+            routing_controller=(ContinuousRouter, {}),
+            car_following_params=SumoCarFollowingParams(
+                speed_mode="obey_safe_speed",
+                decel=1.5,
+            ),
+            num_vehicles=1,
+        )
+
 
 flow_params = dict(
     # name of the experiment
