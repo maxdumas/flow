@@ -16,7 +16,6 @@ dependencies:
     - psutil
     - scipy==1.9.1
     - six==1.16.0
-    - tensorflow-deps # This should be installed from the apple repo
     - pandas==1.4.4
     - pip:
         - path.py
@@ -32,5 +31,3 @@ dependencies:
         - imutils
         - https://akreidieh.s3.amazonaws.com/sumo/flow-0.4.0/sumotools-0.4.0-py3-none-any.whl
         - dm_tree
-        - tensorflow-macos
-        - tensorflow-metal
