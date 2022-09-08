@@ -21,7 +21,7 @@ N_VEHICLES = 20
 vehicles = VehicleParams()
 
 for i in range(N_VEHICLES):
-    if i in {0, 5, 10, 15}:
+    if i in {0, 5}:
         vehicles.add(
             veh_id=f"rl_{i}",
             acceleration_controller=(RLController, {}),
@@ -47,7 +47,7 @@ for i in range(N_VEHICLES):
 
 flow_params = dict(
     # name of the experiment
-    exp_tag="av4sg_singleagent_figure_eight",
+    exp_tag="10p_av4sg_singleagent_figure_eight",
     # name of the flow environment the experiment is running on
     env_name=AccelEnv,
     # name of the network class the experiment is running on
