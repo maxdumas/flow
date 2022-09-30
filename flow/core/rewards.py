@@ -3,6 +3,39 @@
 import numpy as np
 
 
+def dumas_reward(env, fail=False, edge_list=None):
+    if edge_list is None:
+        veh_ids = env.k.vehicle.get_ids()
+    else:
+        veh_ids = env.k.vehicle.get_ids_by_edge(edge_list)
+
+    vel = np.array(env.k.vehicle.get_speed(veh_ids))
+    num_vehicles = len(veh_ids)
+
+    if any(vel < -100) or fail or num_vehicles == 0:
+        return 0.
+
+    target_vel = env.env_params.additional_params['target_velocity']
+
+    s = 0.7
+    l = 10
+    k = 5
+    v_0 = 1
+    
+    def r_moving_function(v):
+        return 1 / (1 + np.exp(-k * (v - v_0)))
+
+    def r_target_function(v):
+        return l * np.exp(-0.5 * (v - target_vel)**2) / (s * np.sqrt(2 * np.pi))
+
+    calculate_r_target = np.vectorize(r_target_function)
+    r_moving = r_moving_function(vel.min())
+    r_target = calculate_r_target(vel).sum()
+    max_r_target = r_target_function(target_vel)
+
+    return r_target * r_moving / max_r_target
+
+
 def desired_velocity(env, fail=False, edge_list=None):
     r"""Encourage proximity to a desired velocity.
 
@@ -56,7 +89,8 @@ def desired_velocity(env, fail=False, edge_list=None):
     # epsilon term (to deal with ZeroDivisionError exceptions)
     eps = np.finfo(np.float32).eps
 
-    return max(max_cost - cost, 0) / (max_cost + eps)
+    # return max(max_cost - cost, 0) / (max_cost + eps)
+    return -cost / (max_cost + eps)
 
 
 def average_velocity(env, fail=False):

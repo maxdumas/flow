@@ -1,3 +1,4 @@
+"""Example of an open multi-lane network with human-driven vehicles."""
 """Bottleneck example.
 
 Bottleneck in which the actions are specifying a desired velocity
@@ -8,37 +9,45 @@ from flow.core.params import SumoParams, EnvParams, InitialConfig, NetParams, \
 from flow.core.params import TrafficLightParams
 from flow.core.params import VehicleParams
 from flow.controllers import RLController, ContinuousRouter, \
-    SimLaneChangeController
+    SimLaneChangeController, IDMController_AvoidAVClumping, LaneChangeController_AvoidAVClumping
 from flow.envs import BottleneckDesiredVelocityEnv
 from flow.networks import BottleneckNetwork
+from flow.networks.highway import HighwayNetwork, ADDITIONAL_NET_PARAMS
+from flow.envs import LaneChangeAccelEnv
+from flow.envs import HighwayRegulationEnv
 
 # time horizon of a single rollout
-HORIZON = 1000
+HORIZON = 2000
 # number of parallel workers
-N_CPUS = 2
+N_CPUS = 5
 # number of rollouts per training iteration
-N_ROLLOUTS = N_CPUS * 4
+# N_ROLLOUTS = N_CPUS * 4
+N_ROLLOUTS = 5
+
 
 SCALING = 1
 NUM_LANES = 4 * SCALING  # number of lanes in the widest highway
-DISABLE_TB = True
-DISABLE_RAMP_METER = True
-AV_FRAC = 0.5
+
+AV_FRAC = 0.25
 
 vehicles = VehicleParams()
 vehicles.add(
-    veh_id="human",
-    lane_change_controller=(SimLaneChangeController, {}),
-    routing_controller=(ContinuousRouter, {}),
+    veh_id="idm",
+    acceleration_controller=(IDMController_AvoidAVClumping, {
+        "noise": 0.2
+    }),
+    lane_change_controller=(LaneChangeController_AvoidAVClumping, {}),
     car_following_params=SumoCarFollowingParams(
-        speed_mode="all_checks",
+        min_gap=0
     ),
     lane_change_params=SumoLaneChangeParams(
-        lane_change_mode=0,
+        lane_change_mode="sumo_default",
     ),
-    num_vehicles=1 * SCALING)
+    routing_controller=(ContinuousRouter, {}))
+
+# autonomous vehicles
 vehicles.add(
-    veh_id="followerstopper",
+    veh_id='rl',
     acceleration_controller=(RLController, {}),
     lane_change_controller=(SimLaneChangeController, {}),
     routing_controller=(ContinuousRouter, {}),
@@ -46,25 +55,18 @@ vehicles.add(
         speed_mode=9,
     ),
     lane_change_params=SumoLaneChangeParams(
-        lane_change_mode=0,
-    ),
-    num_vehicles=1 * SCALING)
+        lane_change_mode="sumo_default",
+    ),)
 
-controlled_segments = [("1", 1, False), ("2", 2, True), ("3", 2, True),
-                       ("4", 2, True), ("5", 1, False)]
-num_observed_segments = [("1", 1), ("2", 3), ("3", 3), ("4", 3), ("5", 1)]
 additional_env_params = {
     "target_velocity": 40,
-    "disable_tb": True,
-    "disable_ramp_metering": True,
-    "controlled_segments": controlled_segments,
-    "symmetric": False,
-    "observed_segments": num_observed_segments,
     "reset_inflow": False,
     "lane_change_duration": 5,
     "max_accel": 3,
     "max_decel": 3,
-    "inflow_range": [1000, 2000]
+    "inflow_range": [1000, 2000],
+    "sort_vehicles": False,
+    "observed_segments": [("highway_0", 5)]
 }
 
 # flow rate
@@ -73,38 +75,49 @@ flow_rate = 2300 * SCALING
 # percentage of flow coming out of each lane
 inflow = InFlows()
 inflow.add(
-    veh_type="human",
-    edge="1",
+    veh_type="idm",
+    edge="highway_0",
     vehs_per_hour=flow_rate * (1 - AV_FRAC),
-    departLane="random",
-    departSpeed=10)
+    depart_lane="random",
+    depart_speed=10)
 inflow.add(
-    veh_type="followerstopper",
-    edge="1",
+    veh_type="rl",
+    edge="highway_0",
     vehs_per_hour=flow_rate * AV_FRAC,
-    departLane="random",
-    departSpeed=10)
+    depart_lane="random",
+    depart_speed=10)
 
-traffic_lights = TrafficLightParams()
-if not DISABLE_TB:
-    traffic_lights.add(node_id="2")
-if not DISABLE_RAMP_METER:
-    traffic_lights.add(node_id="3")
 
-additional_net_params = {"scaling": SCALING, "speed_limit": 23}
+additional_net_params = {
+    "scaling": SCALING, 
+    "speed_limit": 23,
+    # length of the highway
+    "length": 1000,
+    # number of lanes
+    "lanes": 4,
+    # number of edges to divide the highway into
+    "num_edges": 1,
+    "use_ghost_edge": False,
+    # speed limit for the ghost edge
+    "ghost_speed_limit": 25,
+    # length of the downstream ghost edge with the reduced speed limit
+    "boundary_cell_length": 500,
+    "scaling": SCALING
+}
+
 net_params = NetParams(
     inflows=inflow,
     additional_params=additional_net_params)
 
 flow_params = dict(
     # name of the experiment
-    exp_tag="DesiredVelocity",
+    exp_tag="highway",
 
     # name of the flow environment the experiment is running on
-    env_name=BottleneckDesiredVelocityEnv,
+    env_name=HighwayRegulationEnv,
 
     # name of the network class the experiment is running on
-    network=BottleneckNetwork,
+    network=HighwayNetwork,
 
     # simulator that is used by the experiment
     simulator='traci',
@@ -141,11 +154,10 @@ flow_params = dict(
     initial=InitialConfig(
         spacing="uniform",
         min_gap=5,
-        lanes_distribution=float("inf"),
-        edges_distribution=["2", "3", "4", "5"],
+        lanes_distribution=float("inf")
     ),
 
     # traffic lights to be introduced to specific nodes (see
     # flow.core.params.TrafficLightParams)
-    tls=traffic_lights,
+    # tls=traffic_lights,
 )

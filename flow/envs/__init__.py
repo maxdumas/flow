@@ -20,6 +20,7 @@ from flow.envs.green_wave_env import PO_TrafficLightGridEnv
 from flow.envs.green_wave_env import GreenWaveTestEnv
 
 from flow.envs.custom.regulation import RegulationEnv
+from flow.envs.custom.highway_regulation import HighwayRegulationEnv
 
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     'BottleneckDesiredVelocityEnv',
     'TestEnv',
     'BayBridgeEnv',
+    'HighwayRegulationEnv',
     # deprecated classes
     'BottleNeckAccelEnv',
     'DesiredVelocityEnv',

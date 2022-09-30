@@ -14,7 +14,7 @@ DISABLE_TB = True
 # If set to False, ALINEA will control the ramp meter
 DISABLE_RAMP_METER = True
 INFLOW = 2300
-HORIZON = 1000
+HORIZON = 2500
 
 vehicles = VehicleParams()
 vehicles.add(
@@ -22,10 +22,10 @@ vehicles.add(
     lane_change_controller=(SimLaneChangeController, {}),
     routing_controller=(ContinuousRouter, {}),
     car_following_params=SumoCarFollowingParams(
-        speed_mode=25,
+        speed_mode="all_checks",
     ),
     lane_change_params=SumoLaneChangeParams(
-        lane_change_mode=1621,
+        lane_change_mode=0,
     ),
     num_vehicles=1)
 
@@ -70,8 +70,8 @@ flow_params = dict(
         horizon=HORIZON,
         additional_params={
             "target_velocity": 40,
-            "max_accel": 1,
-            "max_decel": 1,
+            "max_accel": 3,
+            "max_decel": 3,
             "lane_change_duration": 5,
             "add_rl_if_exit": False,
             "disable_tb": DISABLE_TB,

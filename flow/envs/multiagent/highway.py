@@ -1,7 +1,7 @@
 """Environment used to train vehicles to improve traffic on a highway."""
 import numpy as np
 from gym.spaces.box import Box
-from flow.core.rewards import desired_velocity
+from flow.core.rewards import desired_velocity, dumas_reward
 from flow.envs.multiagent.base import MultiEnv
 
 
@@ -142,6 +142,7 @@ class MultiAgentHighwayPOEnv(MultiEnv):
             return {}
 
         rewards = {}
+        rl_ids = self.k.vehicle.get_rl_ids()
         for rl_id in self.k.vehicle.get_rl_ids():
             if self.env_params.evaluate:
                 # reward is speed of vehicle if we are in evaluation mode
@@ -151,6 +152,7 @@ class MultiAgentHighwayPOEnv(MultiEnv):
                 reward = 0
             else:
                 # reward high system-level velocities
+                # cost1 = dumas_reward(self, fail=kwargs['fail'])
                 cost1 = desired_velocity(self, fail=kwargs['fail'])
 
                 # penalize small time headways
@@ -168,7 +170,8 @@ class MultiAgentHighwayPOEnv(MultiEnv):
                 # weights for cost1, cost2, and cost3, respectively
                 eta1, eta2 = 1.00, 0.10
 
-                reward = max(eta1 * cost1 + eta2 * cost2, 0)
+                # reward = max(eta1 * cost1 + eta2 * cost2, 0)
+                reward = eta1 * cost1 + eta2 * cost2
 
             rewards[rl_id] = reward
         return rewards

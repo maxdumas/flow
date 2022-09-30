@@ -88,14 +88,25 @@ class LaneChangeAccelEnv(AccelEnv):
 
         return Box(np.array(lb), np.array(ub), dtype=np.float32)
 
+    # @property
+    # def observation_space(self):
+    #     """See class definition."""
+    #     return Box(
+    #         low=-float("inf"),
+    #         high=float("inf"),
+    #         shape=(3 * self.initial_vehicles.num_vehicles, ),
+    #         dtype=np.float32)
+
     @property
     def observation_space(self):
         """See class definition."""
-        return Box(
-            low=0,
-            high=1,
-            shape=(3 * self.initial_vehicles.num_vehicles, ),
-            dtype=np.float32)
+        num_obs = 0
+        # density and velocity for rl and non-rl vehicles per segment
+        # Last element is the outflow
+        for segment in self.obs_segments:
+            num_obs += 4 * segment[1] * self.k.network.num_lanes(segment[0])
+        num_obs += 1
+        return Box(low=0.0, high=1.5, shape=(num_obs, ), dtype=np.float32)
 
     def compute_reward(self, rl_actions, **kwargs):
         """See class definition."""
@@ -111,23 +122,98 @@ class LaneChangeAccelEnv(AccelEnv):
 
         return reward
 
+    # def get_state(self):
+    #     """See class definition."""
+    #     # normalizers
+    #     max_speed = self.k.network.max_speed()
+    #     length = self.k.network.length()
+    #     max_lanes = max(
+    #         self.k.network.num_lanes(edge)
+    #         for edge in self.k.network.get_edge_list())
+
+    #     speed = [self.k.vehicle.get_speed(veh_id) / max_speed
+    #              for veh_id in self.sorted_ids]
+    #     pos = [self.k.vehicle.get_x_by_id(veh_id) / length
+    #            for veh_id in self.sorted_ids]
+    #     lane = [self.k.vehicle.get_lane(veh_id) / max_lanes
+    #             for veh_id in self.sorted_ids]
+
+    #     return np.array(speed + pos + lane)
+
     def get_state(self):
-        """See class definition."""
-        # normalizers
-        max_speed = self.k.network.max_speed()
-        length = self.k.network.length()
-        max_lanes = max(
-            self.k.network.num_lanes(edge)
-            for edge in self.k.network.get_edge_list())
+        """Return aggregate statistics of different segments of the bottleneck.
 
-        speed = [self.k.vehicle.get_speed(veh_id) / max_speed
-                 for veh_id in self.sorted_ids]
-        pos = [self.k.vehicle.get_x_by_id(veh_id) / length
-               for veh_id in self.sorted_ids]
-        lane = [self.k.vehicle.get_lane(veh_id) / max_lanes
-                for veh_id in self.sorted_ids]
+        The state space of the system is defined by splitting the bottleneck up
+        into edges and then segments in each edge. The class variable
+        self.num_obs_segments specifies how many segments each edge is cut up
+        into. Each lane defines a unique segment: we refer to this as a
+        lane-segment. For example, if edge 1 has four lanes and three segments,
+        then we have a total of 12 lane-segments. We will track the aggregate
+        statistics of the vehicles in each lane segment.
 
-        return np.array(speed + pos + lane)
+        For each lane-segment we return the:
+
+        * Number of vehicles on that segment.
+        * Number of AVs (referred to here as rl_vehicles) in the segment.
+        * The average speed of the vehicles in that segment.
+        * The average speed of the rl vehicles in that segment.
+
+        Finally, we also append the total outflow of the bottleneck over the
+        last 20 * self.sim_step seconds.
+        """
+        num_vehicles_list = []
+        num_rl_vehicles_list = []
+        vehicle_speeds_list = []
+        rl_speeds_list = []
+        for i, edge in enumerate(EDGE_LIST):
+            num_lanes = self.k.network.num_lanes(edge)
+            num_vehicles = np.zeros((self.num_obs_segments[i], num_lanes))
+            num_rl_vehicles = np.zeros((self.num_obs_segments[i], num_lanes))
+            vehicle_speeds = np.zeros((self.num_obs_segments[i], num_lanes))
+            rl_vehicle_speeds = np.zeros((self.num_obs_segments[i], num_lanes))
+            ids = self.k.vehicle.get_ids_by_edge(edge)
+            lane_list = self.k.vehicle.get_lane(ids)
+            pos_list = self.k.vehicle.get_position(ids)
+            for i, id in enumerate(ids):
+                segment = np.searchsorted(self.obs_slices[edge],
+                                          pos_list[i]) - 1
+                if id in self.k.vehicle.get_rl_ids():
+                    rl_vehicle_speeds[segment, lane_list[i]] \
+                        += self.k.vehicle.get_speed(id)
+                    num_rl_vehicles[segment, lane_list[i]] += 1
+                else:
+                    vehicle_speeds[segment, lane_list[i]] \
+                        += self.k.vehicle.get_speed(id)
+                    num_vehicles[segment, lane_list[i]] += 1
+
+            # normalize
+
+            num_vehicles /= NUM_VEHICLE_NORM
+            num_rl_vehicles /= NUM_VEHICLE_NORM
+            num_vehicles_list += num_vehicles.flatten().tolist()
+            num_rl_vehicles_list += num_rl_vehicles.flatten().tolist()
+            vehicle_speeds_list += vehicle_speeds.flatten().tolist()
+            rl_speeds_list += rl_vehicle_speeds.flatten().tolist()
+
+        unnorm_veh_list = np.asarray(num_vehicles_list) * NUM_VEHICLE_NORM
+        unnorm_rl_list = np.asarray(num_rl_vehicles_list) * NUM_VEHICLE_NORM
+
+        # compute the mean speed if the speed isn't zero
+        num_rl = len(num_rl_vehicles_list)
+        num_veh = len(num_vehicles_list)
+        mean_speed = np.nan_to_num([
+            vehicle_speeds_list[i] / unnorm_veh_list[i]
+            if int(unnorm_veh_list[i]) else 0 for i in range(num_veh)
+        ])
+        mean_speed_norm = mean_speed / 50
+        mean_rl_speed = np.nan_to_num([
+            rl_speeds_list[i] / unnorm_rl_list[i]
+            if int(unnorm_rl_list[i]) else 0 for i in range(num_rl)
+        ]) / 50
+        outflow = np.asarray(
+            self.k.vehicle.get_outflow_rate(20 * self.sim_step) / 2000.0)
+        return np.concatenate((num_vehicles_list, num_rl_vehicles_list,
+                               mean_speed_norm, mean_rl_speed, [outflow]))
 
     def _apply_rl_actions(self, actions):
         """See class definition."""

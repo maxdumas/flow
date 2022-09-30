@@ -13,17 +13,19 @@ from flow.envs import BottleneckDesiredVelocityEnv
 from flow.networks import BottleneckNetwork
 
 # time horizon of a single rollout
-HORIZON = 1000
+HORIZON = 2500
 # number of parallel workers
-N_CPUS = 2
+N_CPUS = 9
 # number of rollouts per training iteration
-N_ROLLOUTS = N_CPUS * 4
+# N_ROLLOUTS = N_CPUS * 4
+N_ROLLOUTS =10
+
 
 SCALING = 1
 NUM_LANES = 4 * SCALING  # number of lanes in the widest highway
 DISABLE_TB = True
 DISABLE_RAMP_METER = True
-AV_FRAC = 0.5
+AV_FRAC = 0.25
 
 vehicles = VehicleParams()
 vehicles.add(
@@ -46,7 +48,7 @@ vehicles.add(
         speed_mode=9,
     ),
     lane_change_params=SumoLaneChangeParams(
-        lane_change_mode=0,
+        lane_change_mode="sumo_default",
     ),
     num_vehicles=1 * SCALING)
 
@@ -76,14 +78,14 @@ inflow.add(
     veh_type="human",
     edge="1",
     vehs_per_hour=flow_rate * (1 - AV_FRAC),
-    departLane="random",
-    departSpeed=10)
+    depart_lane="random",
+    depart_speed=10)
 inflow.add(
     veh_type="followerstopper",
     edge="1",
     vehs_per_hour=flow_rate * AV_FRAC,
-    departLane="random",
-    departSpeed=10)
+    depart_lane="random",
+    depart_speed=10)
 
 traffic_lights = TrafficLightParams()
 if not DISABLE_TB:
@@ -147,5 +149,5 @@ flow_params = dict(
 
     # traffic lights to be introduced to specific nodes (see
     # flow.core.params.TrafficLightParams)
-    tls=traffic_lights,
+    # tls=traffic_lights,
 )
