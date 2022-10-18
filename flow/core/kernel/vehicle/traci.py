@@ -88,6 +88,12 @@ class TraCIVehicle(KernelVehicle):
         # old speeds used to compute accelerations
         self.previous_speeds = {}
 
+        # distance preference
+        self.__distance_preference = {
+            "hdv": 20,
+            "av": 2.5
+        }
+
     def initialize(self, vehicles):
         """Initialize vehicle state information.
 
@@ -116,6 +122,8 @@ class TraCIVehicle(KernelVehicle):
                 self.num_vehicles += 1
                 if typ['acceleration_controller'][0] == RLController:
                     self.num_rl_vehicles += 1
+
+
 
     def update(self, reset):
         """See parent class.
@@ -1177,3 +1185,12 @@ class TraCIVehicle(KernelVehicle):
         """See parent class."""
         # TODO : Brent
         return 0
+
+    # get distance preference
+    def get_distance_preference(self, veh_id, error=""):
+        if isinstance(veh_id, (list, np.ndarray)):
+            return [self.get_distance_preference(vehID, error) for vehID in veh_id]
+        if veh_id in self.__rl_ids:
+            return self.__distance_preference.get("av", error)
+        else:
+            return self.__distance_preference.get("hdv", error)

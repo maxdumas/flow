@@ -25,7 +25,7 @@ N_ROLLOUTS = 20
 # number of steps per rollout
 HORIZON = 1500
 # number of parallel workers
-N_CPUS = 7
+N_CPUS = 6
 
 # inflow rate on the highway in vehicles per hour
 HIGHWAY_INFLOW_RATE = 4000
