@@ -7,11 +7,11 @@ from flow.envs.multiagent.base import MultiEnv
 
 ADDITIONAL_ENV_PARAMS = {
     # maximum acceleration of autonomous vehicles
-    'max_accel': 1,
+    "max_accel": 1,
     # maximum deceleration of autonomous vehicles
-    'max_decel': 1,
+    "max_decel": 1,
     # desired velocity for all vehicles in the network, in m/s
-    "target_velocity": 25
+    "target_velocity": 25,
 }
 
 
@@ -57,27 +57,27 @@ class MultiAgentHighwayPOEnv(MultiEnv):
         vehicles collide into one another.
     """
 
-    def __init__(self, env_params, sim_params, network, simulator='traci'):
+    def __init__(self, env_params, sim_params, network, simulator="traci"):
         for p in ADDITIONAL_ENV_PARAMS.keys():
             if p not in env_params.additional_params:
-                raise KeyError(
-                    'Environment parameter "{}" not supplied'.format(p))
+                raise KeyError('Environment parameter "{}" not supplied'.format(p))
 
         super().__init__(env_params, sim_params, network, simulator)
 
     @property
     def observation_space(self):
         """See class definition."""
-        return Box(-float('inf'), float('inf'), shape=(5,), dtype=np.float32)
+        return Box(-float("inf"), float("inf"), shape=(5,), dtype=np.float32)
 
     @property
     def action_space(self):
         """See class definition."""
         return Box(
-            low=-np.abs(self.env_params.additional_params['max_decel']),
-            high=self.env_params.additional_params['max_accel'],
+            low=-np.abs(self.env_params.additional_params["max_decel"]),
+            high=self.env_params.additional_params["max_accel"],
             shape=(4,),  # (4,),
-            dtype=np.float32)
+            dtype=np.float32,
+        )
 
     def _apply_rl_actions(self, rl_actions):
         """See class definition."""
@@ -89,9 +89,9 @@ class MultiAgentHighwayPOEnv(MultiEnv):
 
                     lane_change_softmax = np.exp(actions[1:4])
                     lane_change_softmax /= np.sum(lane_change_softmax)
-                    lane_change_action = np.random.choice([-1, 0, 1],
-                                                          p=lane_change_softmax)
-
+                    lane_change_action = np.random.choice(
+                        [-1, 0, 1], p=lane_change_softmax
+                    )
 
                     self.k.vehicle.apply_acceleration(rl_id, accel)
                     self.k.vehicle.apply_lane_change(rl_id, lane_change_action)
@@ -125,13 +125,15 @@ class MultiAgentHighwayPOEnv(MultiEnv):
                 follow_speed = self.k.vehicle.get_speed(follower)
                 follow_head = self.k.vehicle.get_headway(follower)
 
-            observation = np.array([
-                this_speed / max_speed,
-                (lead_speed - this_speed) / max_speed,
-                lead_head / max_length,
-                (this_speed - follow_speed) / max_speed,
-                follow_head / max_length
-            ])
+            observation = np.array(
+                [
+                    this_speed / max_speed,
+                    (lead_speed - this_speed) / max_speed,
+                    lead_head / max_length,
+                    (this_speed - follow_speed) / max_speed,
+                    follow_head / max_length,
+                ]
+            )
 
             obs.update({rl_id: observation})
 
@@ -144,36 +146,49 @@ class MultiAgentHighwayPOEnv(MultiEnv):
             return {}
 
         rewards = {}
-        rl_ids = self.k.vehicle.get_rl_ids()
         for rl_id in self.k.vehicle.get_rl_ids():
             if self.env_params.evaluate:
                 # reward is speed of vehicle if we are in evaluation mode
                 reward = self.k.vehicle.get_speed(rl_id)
-            elif kwargs['fail']:
+            elif kwargs["fail"]:
                 # reward is 0 if a collision occurred
                 reward = 0
             else:
                 # reward high system-level velocities
-                cost1 = dumas_reward(self, fail=kwargs['fail'])
+                cost1 = dumas_reward(self, fail=kwargs["fail"])
                 # cost1 = desired_velocity(self, fail=kwargs['fail'])
 
-                # penalize small time headways
-                cost2 = 0
-                t_min = 1  # smallest acceptable time headway
-
+                # penalize small headways to the leader of this AV
                 lead_id = self.k.vehicle.get_leader(rl_id)
-                if lead_id not in ["", None] \
-                        and self.k.vehicle.get_speed(rl_id) > 0:
-                    t_headway = max(
-                        self.k.vehicle.get_headway(rl_id) /
-                        self.k.vehicle.get_speed(rl_id), 0)
-                    cost2 += min((t_headway - t_min) / t_min, 0)
+                if lead_id not in ["", None] and self.k.vehicle.get_speed(rl_id) > 0:
+                    # smallest acceptable distance headway
+                    min_headway = self.k.vehicle.get_distance_preference(lead_id)
+                    headway = max(self.k.vehicle.get_headway(rl_id), 0)
+                    # Provide a minor positive reward for headways larger than
+                    # the minimum. Provide 0 reward at exactly the minimum.
+                    # Provide very large negative rewards for any headways below
+                    # the minimum.
+                    cost2 = np.log(max(headway - min_headway + 1, 1e-10))
+                else:
+                    cost2 = 0
 
-                # weights for cost1, cost2, and cost3, respectively
-                eta1, eta2 = 1.00, 0.10
+                # penalize small headways for the follower of this AV
+                follower_id = self.k.vehicle.get_follower(rl_id)
+                if (
+                    follower_id not in ["", None]
+                    and self.k.vehicle.get_speed(rl_id) > 0
+                ):
+                    min_headway = self.k.vehicle.get_distance_preference(follower_id)
+                    headway = max(self.k.vehicle.get_headway(follower_id), 0)
+                    # Provide a minor positive reward for follower headways larger than
+                    # the minimum. Provide 0 reward at exactly the minimum.
+                    # Provide very large negative rewards for any headways below
+                    # the minimum.
+                    cost3 = np.log(max(headway - min_headway + 1, 1e-10))
+                else:
+                    cost3 = 0
 
-                # reward = max(eta1 * cost1 + eta2 * cost2, 0)
-                reward = eta1 * cost1 + eta2 * cost2
+                reward = cost1 + cost2 + cost3
 
             rewards[rl_id] = reward
         return rewards
