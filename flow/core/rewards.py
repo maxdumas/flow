@@ -13,20 +13,20 @@ def dumas_reward(env, fail=False, edge_list=None):
     num_vehicles = len(veh_ids)
 
     if any(vel < -100) or fail or num_vehicles == 0:
-        return 0.
+        return 0.0
 
-    target_vel = env.env_params.additional_params['target_velocity']
+    target_vel = env.env_params.additional_params["target_velocity"]
 
     s = 0.7
     l = 10
     k = 5
     v_0 = 1
-    
+
     def r_moving_function(v):
         return 1 / (1 + np.exp(-k * (v - v_0)))
 
     def r_target_function(v):
-        return l * np.exp(-0.5 * (v - target_vel)**2) / (s * np.sqrt(2 * np.pi))
+        return l * np.exp(-0.5 * (v - target_vel) ** 2) / (s * np.sqrt(2 * np.pi))
 
     calculate_r_target = np.vectorize(r_target_function)
     r_moving = r_moving_function(vel.min())
@@ -77,9 +77,9 @@ def desired_velocity(env, fail=False, edge_list=None):
     num_vehicles = len(veh_ids)
 
     if any(vel < -100) or fail or num_vehicles == 0:
-        return 0.
+        return 0.0
 
-    target_vel = env.env_params.additional_params['target_velocity']
+    target_vel = env.env_params.additional_params["target_velocity"]
     max_cost = np.array([target_vel] * num_vehicles)
     max_cost = np.linalg.norm(max_cost)
 
@@ -115,9 +115,9 @@ def average_velocity(env, fail=False):
     vel = np.array(env.k.vehicle.get_speed(env.k.vehicle.get_ids()))
 
     if any(vel < -100) or fail:
-        return 0.
+        return 0.0
     if len(vel) == 0:
-        return 0.
+        return 0.0
 
     return np.mean(vel)
 
@@ -169,8 +169,8 @@ def min_delay(env):
 
     vel = vel[vel >= -1e-6]
     v_top = max(
-        env.k.network.speed_limit(edge)
-        for edge in env.k.network.get_edge_list())
+        env.k.network.speed_limit(edge) for edge in env.k.network.get_edge_list()
+    )
     time_step = env.sim_step
 
     max_cost = time_step * sum(vel.shape)
@@ -228,8 +228,8 @@ def min_delay_unscaled(env):
 
     vel = vel[vel >= -1e-6]
     v_top = max(
-        env.k.network.speed_limit(edge)
-        for edge in env.k.network.get_edge_list())
+        env.k.network.speed_limit(edge) for edge in env.k.network.get_edge_list()
+    )
     time_step = env.sim_step
 
     # epsilon term (to deal with ZeroDivisionError exceptions)
@@ -290,11 +290,9 @@ def penalize_near_standstill(env, thresh=0.3, gain=1):
     return -penalty
 
 
-def penalize_headway_variance(vehicles,
-                              vids,
-                              normalization=1,
-                              penalty_gain=1,
-                              penalty_exponent=1):
+def penalize_headway_variance(
+    vehicles, vids, normalization=1, penalty_gain=1, penalty_exponent=1
+):
     """Reward function used to train rl vehicles to encourage large headways.
 
     Parameters
@@ -312,9 +310,9 @@ def penalize_headway_variance(vehicles,
         used to allow exponential punishing of smaller headways
     """
     headways = penalty_gain * np.power(
-        np.array(
-            [vehicles.get_headway(veh_id) / normalization
-             for veh_id in vids]), penalty_exponent)
+        np.array([vehicles.get_headway(veh_id) / normalization for veh_id in vids]),
+        penalty_exponent,
+    )
     return -np.var(headways)
 
 
@@ -340,7 +338,7 @@ def punish_rl_lane_changes(env, penalty=1):
     return total_lane_change_penalty
 
 
-def energy_consumption(env, gain=.001):
+def energy_consumption(env, gain=0.001):
     """Calculate power consumption of a vehicle.
 
     Assumes vehicle is an average sized vehicle.
@@ -361,12 +359,14 @@ def energy_consumption(env, gain=.001):
 
         accel = abs(speed - prev_speed) / env.sim_step
 
-        power += M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed ** 3
+        power += (
+            M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed**3
+        )
 
     return -gain * power
 
 
-def veh_energy_consumption(env, veh_id, gain=.001):
+def veh_energy_consumption(env, veh_id, gain=0.001):
     """Calculate power consumption of a vehicle.
 
     Assumes vehicle is an average sized vehicle.
@@ -386,12 +386,12 @@ def veh_energy_consumption(env, veh_id, gain=.001):
 
     accel = abs(speed - prev_speed) / env.sim_step
 
-    power += M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed ** 3
+    power += M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed**3
 
     return -gain * power
 
 
-def miles_per_megajoule(env, veh_ids=None, gain=.001):
+def miles_per_megajoule(env, veh_ids=None, gain=0.001):
     """Calculate miles per mega-joule of either a particular vehicle or the total average of all the vehicles.
 
     Assumes vehicle is an average sized vehicle.
@@ -433,7 +433,7 @@ def miles_per_megajoule(env, veh_ids=None, gain=.001):
     return mpj * gain
 
 
-def miles_per_gallon(env, veh_ids=None, gain=.001):
+def miles_per_gallon(env, veh_ids=None, gain=0.001):
     """Calculate mpg of either a particular vehicle or the total average of all the vehicles.
 
     Assumes vehicle is an average sized vehicle.
