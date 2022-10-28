@@ -16,7 +16,7 @@ ADDITIONAL_ENV_PARAMS = {
     # lane change duration for autonomous vehicles, in s. Autonomous vehicles
     # reject new lane changing commands for this duration after successfully
     # changing lanes.
-    "lane_change_duration": 3
+    "lane_change_duration": 3,
 }
 
 
@@ -79,14 +79,19 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
         # in the warmup steps, rl_actions is None
         if rl_actions:
             # duration in seconds
-            lane_change_duration = self.env_params.additional_params["lane_change_duration"]
+            lane_change_duration = self.env_params.additional_params[
+                "lane_change_duration"
+            ]
             # duration in sim steps
             duration_sim_step = lane_change_duration / self.sim_step
             for rl_id, actions in rl_actions.items():
                 if rl_id in self.k.vehicle.get_rl_ids():
                     accel = actions[0]
 
-                    if self.time_counter <= duration_sim_step + self.k.vehicle.get_last_lc(rl_id):
+                    if (
+                        self.time_counter
+                        <= duration_sim_step + self.k.vehicle.get_last_lc(rl_id)
+                    ):
                         lane_change_action = 0
                         # print(self.time_counter, self.k.vehicle.get_last_lc(rl_id), rl_id, "yes")
                     else:
@@ -164,10 +169,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
 
                 # penalize small headways to the leader of this AV
                 lead_id = self.k.vehicle.get_leader(rl_id)
-                if (
-                    lead_id not in ["", None] 
-                    and self.k.vehicle.get_speed(rl_id) > 0
-                ):
+                if lead_id not in ["", None] and self.k.vehicle.get_speed(rl_id) > 0:
                     # smallest acceptable distance headway
                     min_dist_to_leader = self.k.vehicle.get_distance_preference(lead_id)
                     # distance to leader
@@ -183,19 +185,23 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
                     and self.k.vehicle.get_speed(rl_id) > 0
                 ):
                     # smallest acceptable distance headway
-                    min_dist_to_follower = self.k.vehicle.get_distance_preference(follower_id)
+                    min_dist_to_follower = self.k.vehicle.get_distance_preference(
+                        follower_id
+                    )
                     # distance to follower
                     dists_to_follower = max(self.k.vehicle.get_headway(follower_id), 0)
                 else:
                     # if there is no follower
                     dists_to_follower = -1
 
-                reward = fancy_reward(self, 
-                                      dists_to_leader, 
-                                      dists_to_follower, 
-                                      min_dist_to_leader, 
-                                      min_dist_to_follower, 
-                                      fail=kwargs["fail"])
+                reward = fancy_reward(
+                    self,
+                    dists_to_leader,
+                    dists_to_follower,
+                    min_dist_to_leader,
+                    min_dist_to_follower,
+                    fail=kwargs["fail"],
+                )
             rewards[rl_id] = reward
         return rewards
 
