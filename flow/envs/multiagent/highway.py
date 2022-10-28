@@ -178,16 +178,14 @@ class MultiAgentHighwayPOEnv(MultiEnv):
                 else:
                     cost3 = 0
 
-                if cost1 < 0.1:
-                    reward = min(cost1 + cost2 + cost3, 0)
-                else:
-                    reward = cost1 + cost2 + cost3
+                reward = cost1 + cost2 + cost3
 
             rewards[rl_id] = reward
         return rewards
 
     def additional_command(self):
         """See parent class.
+
         Define which vehicles are observed for visualization purposes.
         """
         # specify observed vehicles
