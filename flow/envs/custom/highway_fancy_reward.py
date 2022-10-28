@@ -36,7 +36,8 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
     vehicle only, as they will be computed in the same way for each of them.
     States
         The observation consists of the speeds and bumper-to-bumper headways of
-        the vehicles immediately preceding and following autonomous vehicle, as
+        the vehicles immediately preceding and following autonomous vehicle,
+        whether or not the leader and follower are also autonomous vehicles,as
         well as the speed of the autonomous vehicle.
     Actions
         The action consists of an acceleration, bound according to the
@@ -62,7 +63,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
     @property
     def observation_space(self):
         """See class definition."""
-        return Box(-float("inf"), float("inf"), shape=(5,), dtype=np.float32)
+        return Box(-float("inf"), float("inf"), shape=(7,), dtype=np.float32)
 
     @property
     def action_space(self):
@@ -119,17 +120,21 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
 
             if lead_id in ["", None]:
                 # in case leader is not visible
+                leader_is_av = 0.0
                 lead_speed = max_speed
                 lead_head = max_length
             else:
+                leader_is_av = float(lead_id in self.k.vehicle.get_rl_ids())
                 lead_speed = self.k.vehicle.get_speed(lead_id)
                 lead_head = self.k.vehicle.get_headway(lead_id)
 
             if follower in ["", None]:
                 # in case follower is not visible
+                follower_is_av = 0.0
                 follow_speed = 0
                 follow_head = max_length
             else:
+                follower_is_av = float(follower in self.k.vehicle.get_rl_ids())
                 follow_speed = self.k.vehicle.get_speed(follower)
                 follow_head = self.k.vehicle.get_headway(follower)
 
@@ -140,6 +145,8 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
                     lead_head / max_length,
                     (this_speed - follow_speed) / max_speed,
                     follow_head / max_length,
+                    leader_is_av,  # This is 1.0 if the leader is also an AV, 0.0 otherwise.
+                    follower_is_av,  # This is 1.0 if the follower is also an AV, 0.0 otherwise.
                 ]
             )
 
@@ -167,7 +174,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
                 min_dist_to_leader = 0
                 min_dist_to_follower = 0
 
-                # penalize small headways to the leader of this AV
+                # penalize small headways to the leader of thiAV
                 lead_id = self.k.vehicle.get_leader(rl_id)
                 if lead_id not in ["", None] and self.k.vehicle.get_speed(rl_id) > 0:
                     # smallest acceptable distance headway
