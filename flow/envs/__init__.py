@@ -22,6 +22,8 @@ from flow.envs.green_wave_env import GreenWaveTestEnv
 from flow.envs.custom.regulation import RegulationEnv
 from flow.envs.custom.highway_regulation import HighwayRegulationEnv
 
+from flow.envs.custom.highway_fancy_reward import MultiAgentHighwayFancyEnv
+
 
 __all__ = [
     'Env',
@@ -46,5 +48,6 @@ __all__ = [
     'DesiredVelocityEnv',
     'PO_TrafficLightGridEnv',
     'GreenWaveTestEnv',
-    'RegulationEnv'
+    'RegulationEnv',
+    'MultiAgentHighwayFancyEnv'
 ]

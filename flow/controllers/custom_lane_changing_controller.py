@@ -4,7 +4,7 @@ from flow.controllers.base_lane_changing_controller import \
     BaseLaneChangeController
 import numpy as np
 
-HEADWAY_ALERT = 20
+HEADWAY_ALERT = 40
 
 class LaneChangeController_AvoidAVClumping(BaseLaneChangeController):
     """A controller used to enforce sumo lane-change dynamics on a vehicle.
@@ -43,7 +43,7 @@ class LaneChangeController_AvoidAVClumping(BaseLaneChangeController):
                 headway1 = env.k.vehicle.get_headway(lead_id)
                 headway2 = env.k.vehicle.get_headway(av_lead_id1)
                 if headway1 <= HEADWAY_ALERT and headway2 <= HEADWAY_ALERT:
-                    print("Car id: {} trigger more than two av".format(self.veh_id))
+                    # print("Car id: {} trigger more than two av".format(self.veh_id))
                     return True
         return False
 
@@ -54,7 +54,7 @@ class LaneChangeController_AvoidAVClumping(BaseLaneChangeController):
         if lead_id != follow_id and lead_id in rl_ids and follow_id in rl_ids:
             headway = env.k.vehicle.get_headway(follow_id)
             if headway <= HEADWAY_ALERT:
-                print("Car id: {} trigger between two av".format(self.veh_id))
+                # print("Car id: {} trigger between two av".format(self.veh_id))
                 return True
         return False
 

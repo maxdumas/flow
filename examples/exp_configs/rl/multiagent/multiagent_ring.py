@@ -9,7 +9,7 @@ from ray.tune.registry import register_env
 from flow.core.params import SumoParams, EnvParams, InitialConfig, NetParams
 from flow.core.params import VehicleParams, SumoCarFollowingParams
 from flow.controllers import RLController, IDMController, ContinuousRouter
-from flow.envs.multiagent import MultiAgentWaveAttenuationPOEnv
+from flow.envs.multiagent import MultiAgentWaveAttenuationPOEnv, ringtest
 from flow.networks import RingNetwork
 from flow.utils.registry import make_create_env
 
@@ -18,9 +18,9 @@ HORIZON = 3000
 # number of rollouts per training iteration
 N_ROLLOUTS = 20
 # number of parallel workers
-N_CPUS = 2
+N_CPUS = 7
 # number of automated vehicles. Must be less than or equal to 22.
-NUM_AUTOMATED = 2
+NUM_AUTOMATED = 6
 
 
 # We evenly distribute the automated vehicles in the network.
@@ -56,7 +56,7 @@ flow_params = dict(
     exp_tag="multiagent_ring",
 
     # name of the flow environment the experiment is running on
-    env_name=MultiAgentWaveAttenuationPOEnv,
+    env_name=ringtest,
 
     # name of the network class the experiment is running on
     network=RingNetwork,
@@ -79,7 +79,8 @@ flow_params = dict(
         additional_params={
             "max_accel": 1,
             "max_decel": 1,
-            "ring_length": [220, 270],
+            "ring_length": [1000, 1200],
+            'target_velocity': 30
         },
     ),
 
@@ -88,7 +89,7 @@ flow_params = dict(
     net=NetParams(
         additional_params={
             "length": 260,
-            "lanes": 1,
+            "lanes": 4,
             "speed_limit": 30,
             "resolution": 40,
         }, ),

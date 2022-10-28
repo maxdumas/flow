@@ -2,6 +2,7 @@
 import numpy as np
 from gym.spaces.box import Box
 from flow.core.custom_rewards import fancy_reward
+
 from flow.envs.multiagent.base import MultiEnv
 
 
@@ -12,10 +13,14 @@ ADDITIONAL_ENV_PARAMS = {
     "max_decel": 1,
     # desired velocity for all vehicles in the network, in m/s
     "target_velocity": 25,
+    # lane change duration for autonomous vehicles, in s. Autonomous vehicles
+    # reject new lane changing commands for this duration after successfully
+    # changing lanes.
+    "lane_change_duration": 3
 }
 
 
-class MultiAgentHighwayPOEnv(MultiEnv):
+class MultiAgentHighwayFancyEnv(MultiEnv):
     """Partially observable multi-agent environment for an highway with ramps.
     This environment is used to train autonomous vehicles to attenuate the
     formation and propagation of waves in an open highway network.
@@ -73,15 +78,23 @@ class MultiAgentHighwayPOEnv(MultiEnv):
         """See class definition."""
         # in the warmup steps, rl_actions is None
         if rl_actions:
+            # duration in seconds
+            lane_change_duration = self.env_params.additional_params["lane_change_duration"]
+            # duration in sim steps
+            duration_sim_step = lane_change_duration / self.sim_step
             for rl_id, actions in rl_actions.items():
                 if rl_id in self.k.vehicle.get_rl_ids():
                     accel = actions[0]
 
-                    lane_change_softmax = np.exp(actions[1:4])
-                    lane_change_softmax /= np.sum(lane_change_softmax)
-                    lane_change_action = np.random.choice(
-                        [-1, 0, 1], p=lane_change_softmax
-                    )
+                    if self.time_counter <= duration_sim_step + self.k.vehicle.get_last_lc(rl_id):
+                        lane_change_action = 0
+                        # print(self.time_counter, self.k.vehicle.get_last_lc(rl_id), rl_id, "yes")
+                    else:
+                        lane_change_softmax = np.exp(actions[1:4])
+                        lane_change_softmax /= np.sum(lane_change_softmax)
+                        lane_change_action = np.random.choice(
+                            [-1, 0, 1], p=lane_change_softmax
+                        )
 
                     self.k.vehicle.apply_acceleration(rl_id, accel)
                     self.k.vehicle.apply_lane_change(rl_id, lane_change_action)
@@ -144,23 +157,24 @@ class MultiAgentHighwayPOEnv(MultiEnv):
                 # reward is 0 if a collision occurred
                 reward = 0
             else:
-                # reward high system-level velocities
-                cost1 = dumas_reward(self, fail=kwargs["fail"])
-                # cost1 = desired_velocity(self, fail=kwargs['fail'])
+                dists_to_leader = 0
+                dists_to_follower = 0
+                min_dist_to_leader = 0
+                min_dist_to_follower = 0
 
                 # penalize small headways to the leader of this AV
                 lead_id = self.k.vehicle.get_leader(rl_id)
-                if lead_id not in ["", None] and self.k.vehicle.get_speed(rl_id) > 0:
+                if (
+                    lead_id not in ["", None] 
+                    and self.k.vehicle.get_speed(rl_id) > 0
+                ):
                     # smallest acceptable distance headway
-                    min_headway = self.k.vehicle.get_distance_preference(lead_id)
-                    headway = max(self.k.vehicle.get_headway(rl_id), 0)
-                    # Provide a minor positive reward for headways larger than
-                    # the minimum. Provide 0 reward at exactly the minimum.
-                    # Provide very large negative rewards for any headways below
-                    # the minimum.
-                    cost2 = np.log(max(headway - min_headway + 1, 1e-10))
+                    min_dist_to_leader = self.k.vehicle.get_distance_preference(lead_id)
+                    # distance to leader
+                    dists_to_leader = max(self.k.vehicle.get_headway(rl_id), 0)
                 else:
-                    cost2 = 0
+                    # if there is no leader
+                    dists_to_leader = -1
 
                 # penalize small headways for the follower of this AV
                 follower_id = self.k.vehicle.get_follower(rl_id)
@@ -168,21 +182,20 @@ class MultiAgentHighwayPOEnv(MultiEnv):
                     follower_id not in ["", None]
                     and self.k.vehicle.get_speed(rl_id) > 0
                 ):
-                    min_headway = self.k.vehicle.get_distance_preference(follower_id)
-                    headway = max(self.k.vehicle.get_headway(follower_id), 0)
-                    # Provide a minor positive reward for follower headways larger than
-                    # the minimum. Provide 0 reward at exactly the minimum.
-                    # Provide very large negative rewards for any headways below
-                    # the minimum.
-                    cost3 = np.log(max(headway - min_headway + 1, 1e-10))
+                    # smallest acceptable distance headway
+                    min_dist_to_follower = self.k.vehicle.get_distance_preference(follower_id)
+                    # distance to follower
+                    dists_to_follower = max(self.k.vehicle.get_headway(follower_id), 0)
                 else:
-                    cost3 = 0
+                    # if there is no follower
+                    dists_to_follower = -1
 
-                if cost1 < 0.1:
-                    reward = min(cost1 + cost2 + cost3, 0)
-                else:
-                    reward = cost1 + cost2 + cost3
-
+                reward = fancy_reward(self, 
+                                      dists_to_leader, 
+                                      dists_to_follower, 
+                                      min_dist_to_leader, 
+                                      min_dist_to_follower, 
+                                      fail=kwargs["fail"])
             rewards[rl_id] = reward
         return rewards
 

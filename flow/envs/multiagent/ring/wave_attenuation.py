@@ -18,6 +18,7 @@ from flow.core.params import InitialConfig
 from flow.core.params import NetParams
 from flow.envs.multiagent.base import MultiEnv
 from flow.envs.ring.wave_attenuation import v_eq_max_function
+from flow.core.rewards import desired_velocity, dumas_reward
 
 
 ADDITIONAL_ENV_PARAMS = {
@@ -29,6 +30,237 @@ ADDITIONAL_ENV_PARAMS = {
     # trained on
     'ring_length': [220, 270],
 }
+
+
+class ringtest(MultiEnv):
+    """Multi-agent variant of WaveAttenuationPOEnv.
+
+    Required from env_params:
+
+    * max_accel: maximum acceleration of autonomous vehicles
+    * max_decel: maximum deceleration of autonomous vehicles
+    * ring_length: bounds on the ranges of ring road lengths the autonomous
+      vehicle is trained on. If set to None, the environment sticks to the ring
+      road specified in the original network definition.
+
+    States
+        The state of each agent (AV) consists of the speed and headway of the
+        ego vehicle, as well as the difference in speed between the ego vehicle
+        and its leader. There is no assumption on the number of vehicles in the
+        network.
+
+    Actions
+        Actions are an acceleration for each rl vehicle, bounded by the maximum
+        accelerations and decelerations specified in EnvParams.
+
+    Rewards
+        The reward function rewards high average speeds from all vehicles in
+        the network, and penalizes accelerations by the rl vehicle. This reward
+        is shared by all agents.
+
+    Termination
+        A rollout is terminated if the time horizon is reached or if two
+        vehicles collide into one another.
+    """
+
+    def __init__(self, env_params, sim_params, network, simulator='traci'):
+        for p in ADDITIONAL_ENV_PARAMS.keys():
+            if p not in env_params.additional_params:
+                raise KeyError(
+                    'Environment parameter \'{}\' not supplied'.format(p))
+
+        super().__init__(env_params, sim_params, network, simulator)
+
+    @property
+    def observation_space(self):
+        """See class definition."""
+        return Box(-float("inf"), float("inf"), shape=(5,), dtype=np.float32)
+
+    @property
+    def action_space(self):
+        """See class definition."""
+        return Box(
+            low=-np.abs(self.env_params.additional_params["max_decel"]),
+            high=self.env_params.additional_params["max_accel"],
+            shape=(4,),  # (4,),
+            dtype=np.float32,
+        )
+
+    def _apply_rl_actions(self, rl_actions):
+        """See class definition."""
+        # in the warmup steps, rl_actions is None
+        if rl_actions:
+            for rl_id, actions in rl_actions.items():
+                if rl_id in self.k.vehicle.get_rl_ids():
+                    accel = actions[0]
+
+                    lane_change_softmax = np.exp(actions[1:4])
+                    lane_change_softmax /= np.sum(lane_change_softmax)
+                    lane_change_action = np.random.choice(
+                        [-1, 0, 1], p=lane_change_softmax
+                    )
+
+                    self.k.vehicle.apply_acceleration(rl_id, accel)
+                    self.k.vehicle.apply_lane_change(rl_id, lane_change_action)
+
+    def get_state(self):
+        """See class definition."""
+        obs = {}
+
+        # normalizing constants
+        max_speed = self.k.network.max_speed()
+        max_length = self.k.network.length()
+
+        for rl_id in self.k.vehicle.get_rl_ids():
+            this_speed = self.k.vehicle.get_speed(rl_id)
+            lead_id = self.k.vehicle.get_leader(rl_id)
+            follower = self.k.vehicle.get_follower(rl_id)
+
+            if lead_id in ["", None]:
+                # in case leader is not visible
+                lead_speed = max_speed
+                lead_head = max_length
+            else:
+                lead_speed = self.k.vehicle.get_speed(lead_id)
+                lead_head = self.k.vehicle.get_headway(lead_id)
+
+            if follower in ["", None]:
+                # in case follower is not visible
+                follow_speed = 0
+                follow_head = max_length
+            else:
+                follow_speed = self.k.vehicle.get_speed(follower)
+                follow_head = self.k.vehicle.get_headway(follower)
+
+            observation = np.array(
+                [
+                    this_speed / max_speed,
+                    (lead_speed - this_speed) / max_speed,
+                    lead_head / max_length,
+                    (this_speed - follow_speed) / max_speed,
+                    follow_head / max_length,
+                ]
+            )
+
+            obs.update({rl_id: observation})
+
+        return obs
+
+    def compute_reward(self, rl_actions, **kwargs):
+        """See class definition."""
+        # in the warmup steps
+        if rl_actions is None:
+            return {}
+
+        rewards = {}
+        for rl_id in self.k.vehicle.get_rl_ids():
+            if self.env_params.evaluate:
+                # reward is speed of vehicle if we are in evaluation mode
+                reward = self.k.vehicle.get_speed(rl_id)
+            elif kwargs["fail"]:
+                # reward is 0 if a collision occurred
+                reward = 0
+            else:
+                # reward high system-level velocities
+                cost1 = dumas_reward(self, fail=kwargs["fail"])
+                # cost1 = desired_velocity(self, fail=kwargs['fail'])
+
+                # penalize small headways to the leader of this AV
+                lead_id = self.k.vehicle.get_leader(rl_id)
+                if lead_id not in ["", None] and self.k.vehicle.get_speed(rl_id) > 0:
+                    # smallest acceptable distance headway
+                    min_headway = self.k.vehicle.get_distance_preference(lead_id)
+                    headway = max(self.k.vehicle.get_headway(rl_id), 0)
+                    # Provide a minor positive reward for headways larger than
+                    # the minimum. Provide 0 reward at exactly the minimum.
+                    # Provide very large negative rewards for any headways below
+                    # the minimum.
+                    cost2 = np.log(max(headway - min_headway + 1, 1e-10))
+                else:
+                    cost2 = 0
+
+                # penalize small headways for the follower of this AV
+                follower_id = self.k.vehicle.get_follower(rl_id)
+                if (
+                    follower_id not in ["", None]
+                    and self.k.vehicle.get_speed(rl_id) > 0
+                ):
+                    min_headway = self.k.vehicle.get_distance_preference(follower_id)
+                    headway = max(self.k.vehicle.get_headway(follower_id), 0)
+                    # Provide a minor positive reward for follower headways larger than
+                    # the minimum. Provide 0 reward at exactly the minimum.
+                    # Provide very large negative rewards for any headways below
+                    # the minimum.
+                    cost3 = np.log(max(headway - min_headway + 1, 1e-10))
+                else:
+                    cost3 = 0
+
+                reward = cost1 + cost2 + cost3
+
+            rewards[rl_id] = reward
+        return rewards
+
+    def additional_command(self):
+        """Define which vehicles are observed for visualization purposes."""
+        # specify observed vehicles
+        for rl_id in self.k.vehicle.get_rl_ids():
+            lead_id = self.k.vehicle.get_leader(rl_id) or rl_id
+            self.k.vehicle.set_observed(lead_id)
+
+    def reset(self, new_inflow_rate=None):
+        """See parent class.
+
+        The sumo instance is reset with a new ring length, and a number of
+        steps are performed with the rl vehicle acting as a human vehicle.
+        """
+        # skip if ring length is None
+        if self.env_params.additional_params['ring_length'] is None:
+            return super().reset()
+
+        # reset the step counter
+        self.step_counter = 0
+
+        # update the network
+        initial_config = InitialConfig(bunching=50, min_gap=0)
+        length = random.randint(
+            self.env_params.additional_params['ring_length'][0],
+            self.env_params.additional_params['ring_length'][1])
+        additional_net_params = {
+            'length':
+                length,
+            'lanes':
+                self.net_params.additional_params['lanes'],
+            'speed_limit':
+                self.net_params.additional_params['speed_limit'],
+            'resolution':
+                self.net_params.additional_params['resolution']
+        }
+        net_params = NetParams(additional_params=additional_net_params)
+
+        self.network = self.network.__class__(
+            self.network.orig_name, self.network.vehicles,
+            net_params, initial_config)
+        self.k.vehicle = deepcopy(self.initial_vehicles)
+        self.k.vehicle.kernel_api = self.k.kernel_api
+        self.k.vehicle.master_kernel = self.k
+
+        # solve for the velocity upper bound of the ring
+        v_guess = 4
+        v_eq_max = fsolve(v_eq_max_function, np.array(v_guess),
+                          args=(len(self.initial_ids), length))[0]
+
+        print('\n-----------------------')
+        print('ring length:', net_params.additional_params['length'])
+        print('v_max:', v_eq_max)
+        print('-----------------------')
+
+        # restart the sumo instance
+        self.restart_simulation(
+            sim_params=self.sim_params,
+            render=self.sim_params.render)
+
+        # perform the generic reset function
+        return super().reset()
 
 
 class MultiWaveAttenuationPOEnv(MultiEnv):

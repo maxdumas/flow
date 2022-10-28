@@ -4,7 +4,7 @@ from flow.envs.multiagent.base import MultiEnv
 from flow.envs.multiagent.ring.wave_attenuation import \
     MultiWaveAttenuationPOEnv
 from flow.envs.multiagent.ring.wave_attenuation import \
-    MultiAgentWaveAttenuationPOEnv
+    MultiAgentWaveAttenuationPOEnv, ringtest
 from flow.envs.multiagent.ring.accel import AdversarialAccelEnv
 from flow.envs.multiagent.ring.accel import MultiAgentAccelPOEnv
 from flow.envs.multiagent.traffic_light_grid import MultiTrafficLightGridPOEnv
@@ -21,5 +21,6 @@ __all__ = [
     'MultiAgentAccelPOEnv',
     'MultiAgentWaveAttenuationPOEnv',
     'MultiAgentMergePOEnv',
-    'I210MultiEnv'
+    'I210MultiEnv',
+    'ringtest'
 ]

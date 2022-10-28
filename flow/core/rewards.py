@@ -13,20 +13,20 @@ def dumas_reward(env, fail=False, edge_list=None):
     num_vehicles = len(veh_ids)
 
     if any(vel < -100) or fail or num_vehicles == 0:
-        return 0.
+        return 0.0
 
-    target_vel = env.env_params.additional_params['target_velocity']
+    target_vel = env.env_params.additional_params["target_velocity"]
 
     s = 0.7
     l = 10
     k = 5
     v_0 = 1
-    
+
     def r_moving_function(v):
         return 1 / (1 + np.exp(-k * (v - v_0)))
 
     def r_target_function(v):
-        return l * np.exp(-0.5 * (v - target_vel)**2) / (s * np.sqrt(2 * np.pi))
+        return l * np.exp(-0.5 * (v - target_vel) ** 2) / (s * np.sqrt(2 * np.pi))
 
     calculate_r_target = np.vectorize(r_target_function)
     r_moving = r_moving_function(vel.min())
@@ -38,7 +38,6 @@ def dumas_reward(env, fail=False, edge_list=None):
 
 def desired_velocity(env, fail=False, edge_list=None):
     r"""Encourage proximity to a desired velocity.
-
     This function measures the deviation of a system of vehicles from a
     user-specified desired velocity peaking when all vehicles in the ring
     are set to this desired velocity. Moreover, in order to ensure that the
@@ -51,7 +50,6 @@ def desired_velocity(env, fail=False, edge_list=None):
     velocity. Additionally, since the velocity of vehicles are
     unbounded above, the reward is bounded below by zero,
     to ensure nonnegativity.
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -62,7 +60,6 @@ def desired_velocity(env, fail=False, edge_list=None):
     edge_list : list  of str, optional
         list of edges the reward is computed over. If no edge_list is defined,
         the reward is computed over all edges
-
     Returns
     -------
     float
@@ -77,9 +74,9 @@ def desired_velocity(env, fail=False, edge_list=None):
     num_vehicles = len(veh_ids)
 
     if any(vel < -100) or fail or num_vehicles == 0:
-        return 0.
+        return 0.0
 
-    target_vel = env.env_params.additional_params['target_velocity']
+    target_vel = env.env_params.additional_params["target_velocity"]
     max_cost = np.array([target_vel] * num_vehicles)
     max_cost = np.linalg.norm(max_cost)
 
@@ -95,10 +92,8 @@ def desired_velocity(env, fail=False, edge_list=None):
 
 def average_velocity(env, fail=False):
     """Encourage proximity to an average velocity.
-
     This reward function returns the average velocity of all
     vehicles in the system.
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -106,7 +101,6 @@ def average_velocity(env, fail=False):
         state of the system.
     fail : bool, optional
         specifies if any crash or other failure occurred in the system
-
     Returns
     -------
     float
@@ -115,16 +109,15 @@ def average_velocity(env, fail=False):
     vel = np.array(env.k.vehicle.get_speed(env.k.vehicle.get_ids()))
 
     if any(vel < -100) or fail:
-        return 0.
+        return 0.0
     if len(vel) == 0:
-        return 0.
+        return 0.0
 
     return np.mean(vel)
 
 
 def rl_forward_progress(env, gain=0.1):
     """Rewared function used to reward the RL vehicles for travelling forward.
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -132,7 +125,6 @@ def rl_forward_progress(env, gain=0.1):
         state of the system.
     gain : float
         specifies how much to reward the RL vehicles
-
     Returns
     -------
     float
@@ -150,16 +142,13 @@ def boolean_action_penalty(discrete_actions, gain=1.0):
 
 def min_delay(env):
     """Reward function used to encourage minimization of total delay.
-
     This function measures the deviation of a system of vehicles from all the
     vehicles smoothly travelling at a fixed speed to their destinations.
-
     Parameters
     ----------
     env : flow.envs.Env
         the environment variable, which contains information on the current
         state of the system.
-
     Returns
     -------
     float
@@ -169,8 +158,8 @@ def min_delay(env):
 
     vel = vel[vel >= -1e-6]
     v_top = max(
-        env.k.network.speed_limit(edge)
-        for edge in env.k.network.get_edge_list())
+        env.k.network.speed_limit(edge) for edge in env.k.network.get_edge_list()
+    )
     time_step = env.sim_step
 
     max_cost = time_step * sum(vel.shape)
@@ -184,7 +173,6 @@ def min_delay(env):
 
 def avg_delay_specified_vehicles(env, veh_ids):
     """Calculate the average delay for a set of vehicles in the system.
-
     Parameters
     ----------
     env: flow.envs.Env
@@ -212,13 +200,11 @@ def avg_delay_specified_vehicles(env, veh_ids):
 
 def min_delay_unscaled(env):
     """Return the average delay for all vehicles in the system.
-
     Parameters
     ----------
     env : flow.envs.Env
         the environment variable, which contains information on the current
         state of the system.
-
     Returns
     -------
     float
@@ -228,8 +214,8 @@ def min_delay_unscaled(env):
 
     vel = vel[vel >= -1e-6]
     v_top = max(
-        env.k.network.speed_limit(edge)
-        for edge in env.k.network.get_edge_list())
+        env.k.network.speed_limit(edge) for edge in env.k.network.get_edge_list()
+    )
     time_step = env.sim_step
 
     # epsilon term (to deal with ZeroDivisionError exceptions)
@@ -241,11 +227,9 @@ def min_delay_unscaled(env):
 
 def penalize_standstill(env, gain=1):
     """Reward function that penalizes vehicle standstill.
-
     Is it better for this to be:
         a) penalize standstill in general?
         b) multiplicative based on time that vel=0?
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -253,7 +237,6 @@ def penalize_standstill(env, gain=1):
         state of the system.
     gain : float
         multiplicative factor on the action penalty
-
     Returns
     -------
     float
@@ -268,12 +251,10 @@ def penalize_standstill(env, gain=1):
 
 def penalize_near_standstill(env, thresh=0.3, gain=1):
     """Reward function which penalizes vehicles at a low velocity.
-
     This reward function is used to penalize vehicles below a
     specified threshold. This assists with discouraging RL from
     gamifying a network, which can result in standstill behavior
     or similarly bad, near-zero velocities.
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -290,13 +271,10 @@ def penalize_near_standstill(env, thresh=0.3, gain=1):
     return -penalty
 
 
-def penalize_headway_variance(vehicles,
-                              vids,
-                              normalization=1,
-                              penalty_gain=1,
-                              penalty_exponent=1):
+def penalize_headway_variance(
+    vehicles, vids, normalization=1, penalty_gain=1, penalty_exponent=1
+):
     """Reward function used to train rl vehicles to encourage large headways.
-
     Parameters
     ----------
     vehicles : flow.core.kernel.vehicle.KernelVehicle
@@ -312,18 +290,16 @@ def penalize_headway_variance(vehicles,
         used to allow exponential punishing of smaller headways
     """
     headways = penalty_gain * np.power(
-        np.array(
-            [vehicles.get_headway(veh_id) / normalization
-             for veh_id in vids]), penalty_exponent)
+        np.array([vehicles.get_headway(veh_id) / normalization for veh_id in vids]),
+        penalty_exponent,
+    )
     return -np.var(headways)
 
 
 def punish_rl_lane_changes(env, penalty=1):
     """Penalize an RL vehicle performing lane changes.
-
     This reward function is meant to minimize the number of lane changes and RL
     vehicle performs.
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -340,9 +316,8 @@ def punish_rl_lane_changes(env, penalty=1):
     return total_lane_change_penalty
 
 
-def energy_consumption(env, gain=.001):
+def energy_consumption(env, gain=0.001):
     """Calculate power consumption of a vehicle.
-
     Assumes vehicle is an average sized vehicle.
     The power calculated here is the lower bound of the actual power consumed
     by a vehicle.
@@ -361,14 +336,15 @@ def energy_consumption(env, gain=.001):
 
         accel = abs(speed - prev_speed) / env.sim_step
 
-        power += M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed ** 3
+        power += (
+            M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed**3
+        )
 
     return -gain * power
 
 
-def veh_energy_consumption(env, veh_id, gain=.001):
+def veh_energy_consumption(env, veh_id, gain=0.001):
     """Calculate power consumption of a vehicle.
-
     Assumes vehicle is an average sized vehicle.
     The power calculated here is the lower bound of the actual power consumed
     by a vehicle.
@@ -386,18 +362,16 @@ def veh_energy_consumption(env, veh_id, gain=.001):
 
     accel = abs(speed - prev_speed) / env.sim_step
 
-    power += M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed ** 3
+    power += M * speed * accel + M * g * Cr * speed + 0.5 * rho * A * Ca * speed**3
 
     return -gain * power
 
 
-def miles_per_megajoule(env, veh_ids=None, gain=.001):
+def miles_per_megajoule(env, veh_ids=None, gain=0.001):
     """Calculate miles per mega-joule of either a particular vehicle or the total average of all the vehicles.
-
     Assumes vehicle is an average sized vehicle.
     The power calculated here is the lower bound of the actual power consumed
     by a vehicle.
-
     Parameters
     ----------
     env : flow.envs.Env
@@ -433,13 +407,11 @@ def miles_per_megajoule(env, veh_ids=None, gain=.001):
     return mpj * gain
 
 
-def miles_per_gallon(env, veh_ids=None, gain=.001):
+def miles_per_gallon(env, veh_ids=None, gain=0.001):
     """Calculate mpg of either a particular vehicle or the total average of all the vehicles.
-
     Assumes vehicle is an average sized vehicle.
     The power calculated here is the lower bound of the actual power consumed
     by a vehicle.
-
     Parameters
     ----------
     env : flow.envs.Env
