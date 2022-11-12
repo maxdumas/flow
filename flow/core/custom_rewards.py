@@ -1,8 +1,9 @@
 """A series of reward functions."""
-
 import numpy as np
 from scipy.stats import norm
 from scipy.special import expit
+
+from flow.envs.base import Env
 
 
 def dumas_reward(env, fail=False, edge_list=None):
@@ -38,26 +39,51 @@ def dumas_reward(env, fail=False, edge_list=None):
     return r_target * r_moving / max_r_target
 
 
-def fancy_reward(env, dists_to_leader, dists_to_follower, min_dist_to_leader, min_dist_to_follower, fail=False):
+def penalize_close_to_stopping(v: float) -> float:
+    """
+    Reward component that penalizes velocities that are close to 0
+    """
+    k = 10  # How quickly the reward will decrease to 0 once we are approaching 0 velocity.
+    v_0 = 1  # The speed below which we consider ourselves moving too slowly. "Stopped".
+    return expit(k * (v - v_0))
 
-    # Reward component that penalizes velocities that are close to 0
-    def r_moving_function(v):
-        k = 10 # How quickly the reward will decrease to 0 once we are approaching 0 velocity.
-        v_0 = 1 # The speed below which we consider ourselves moving too slowly. "Stopped".
-        return expit(k * (v - v_0))
 
-    # Reward component to penalize headways that are too small. This is a modified
-    # sigmoid function that will return ~0 at dist <= 0, and ~1 at dist >= dist_min,
-    # regardless of the value of dist_min. As such, it will have a shallower slope
-    # for larger dist_min and a narrower slow for smaller dist_min.
-    def r_penalize_too_close_function(dist, dist_min):
-        return expit(6 * (2 * dist / dist_min - 1))
+def penalize_too_close_to_others(dist: float, dist_min: float) -> float:
+    """
+    Reward component to penalize headways that are too small. This is a modified
+    sigmoid function that will return ~0 at dist <= 0, and ~1 at dist >=
+    dist_min, regardless of the value of dist_min. As such, it will have a
+    shallower slope for larger dist_min and a narrower slow for smaller
+    dist_min.
+    """
+    if dist < 0:
+        # Assume the dist is invalid and ignore this reward, if < 0
+        return 1.0
+    return expit(6 * (2 * dist / dist_min - 1))
 
-    # Reward component that rewards velocities that are cose to the target velocity and nothing else
-    def r_target_function(v, v_t, spread):
-        D = norm(loc=v_t, scale=spread)
-        return D.pdf(v)
 
+def reward_target_velocity(v: float, v_t: float, spread: float):
+    """
+    Reward component that rewards velocities that are close to the target
+    velocity and nothing else.
+    """
+    D = norm(loc=v_t, scale=spread)
+    return D.pdf(v)
+
+def reward_high_efficiency(env: Env, time_span=10):
+    """Reward component that returns the ratio of inflows to outflows over
+    time_span. Note that this reward only makes sense in open networks."""
+    return env.k.vehicle.get_outflow_rate(time_span) / env.k.vehicle.get_inflow_rate(time_span)
+
+
+def fancy_reward(
+    env,
+    dists_to_leader,
+    dists_to_follower,
+    min_dist_to_leader,
+    min_dist_to_follower,
+    fail=False,
+):
     target_vel = env.env_params.additional_params["target_velocity"]
     r_target_spread = 3.0
     veh_ids = env.k.vehicle.get_ids()
@@ -65,49 +91,49 @@ def fancy_reward(env, dists_to_leader, dists_to_follower, min_dist_to_leader, mi
 
     # Calculate r_moving from the lowest velocity. If any vehicle is stopped, we
     # want the reward to be 0.
-    r_is_moving = r_moving_function(vels.min())
+    r_is_moving = penalize_close_to_stopping(vels.min())
 
     # For r_target_vel, we calculate the reward across all velocities and take the
     # sum, then normalize it against the maximum possible r_target_vel score, which
     # would be 1 if every vehicle was traveling at exactly the target speed
-    r_target_vel = r_target_function(vels, target_vel, r_target_spread).sum()
-    max_r_target = r_target_function(target_vel, target_vel, r_target_spread) * len(vels)
+    r_target_vel = reward_target_velocity(vels, target_vel, r_target_spread).sum()
+    max_r_target = reward_target_velocity(
+        target_vel, target_vel, r_target_spread
+    ) * len(vels)
     r_target_vel /= max_r_target
 
     # no leader
     if dists_to_leader == -1:
         r_penalize_too_close_to_leader = 1
     else:
-        r_penalize_too_close_to_leader = r_penalize_too_close_function(dists_to_leader, min_dist_to_leader).mean()
+        r_penalize_too_close_to_leader = penalize_too_close_to_others(
+            dists_to_leader, min_dist_to_leader
+        ).mean()
 
     if dists_to_follower == -1:
         r_penalize_too_close_to_follower = 1
     else:
-        r_penalize_too_close_to_follower = r_penalize_too_close_function(dists_to_follower, min_dist_to_follower).mean()
+        r_penalize_too_close_to_follower = penalize_too_close_to_others(
+            dists_to_follower, min_dist_to_follower
+        ).mean()
+
+    return (
+        10.0
+        * r_is_moving
+        * r_penalize_too_close_to_leader
+        * r_penalize_too_close_to_follower
+        * r_target_vel
+    )
 
 
-    return 10.0 * r_is_moving * r_penalize_too_close_to_leader * r_penalize_too_close_to_follower * r_target_vel
-
-def naive_reward(env, dists_to_leader, dists_to_follower, min_dist_to_leader, min_dist_to_follower, fail=False):
-
-    # Reward component that penalizes velocities that are close to 0
-    def r_moving_function(v):
-        k = 10 # How quickly the reward will decrease to 0 once we are approaching 0 velocity.
-        v_0 = 1 # The speed below which we consider ourselves moving too slowly. "Stopped".
-        return expit(k * (v - v_0))
-
-    # Reward component to penalize headways that are too small. This is a modified
-    # sigmoid function that will return ~0 at dist <= 0, and ~1 at dist >= dist_min,
-    # regardless of the value of dist_min. As such, it will have a shallower slope
-    # for larger dist_min and a narrower slow for smaller dist_min.
-    def r_penalize_too_close_function(dist, dist_min):
-        return expit(6 * (2 * dist / dist_min - 1))
-
-    # Reward component that rewards velocities that are cose to the target velocity and nothing else
-    def r_target_function(v, v_t, spread):
-        D = norm(loc=v_t, scale=spread)
-        return D.pdf(v)
-
+def naive_reward(
+    env,
+    dists_to_leader,
+    dists_to_follower,
+    min_dist_to_leader,
+    min_dist_to_follower,
+    fail=False,
+):
     target_vel = env.env_params.additional_params["target_velocity"]
     r_target_spread = 3.0
     veh_ids = env.k.vehicle.get_ids()
@@ -115,25 +141,52 @@ def naive_reward(env, dists_to_leader, dists_to_follower, min_dist_to_leader, mi
 
     # Calculate r_moving from the lowest velocity. If any vehicle is stopped, we
     # want the reward to be 0.
-    r_is_moving = r_moving_function(vels.min())
+    r_is_moving = penalize_close_to_stopping(vels.min())
 
     # For r_target_vel, we calculate the reward across all velocities and take the
     # sum, then normalize it against the maximum possible r_target_vel score, which
     # would be 1 if every vehicle was traveling at exactly the target speed
-    r_target_vel = r_target_function(vels, target_vel, r_target_spread).sum()
-    max_r_target = r_target_function(target_vel, target_vel, r_target_spread) * len(vels)
+    r_target_vel = reward_target_velocity(vels, target_vel, r_target_spread).sum()
+    max_r_target = reward_target_velocity(
+        target_vel, target_vel, r_target_spread
+    ) * len(vels)
     r_target_vel /= max_r_target
-
-    # no leader
-    if dists_to_leader == -1:
-        r_penalize_too_close_to_leader = 1
-    else:
-        r_penalize_too_close_to_leader = r_penalize_too_close_function(dists_to_leader, min_dist_to_leader).mean()
-
-    if dists_to_follower == -1:
-        r_penalize_too_close_to_follower = 1
-    else:
-        r_penalize_too_close_to_follower = r_penalize_too_close_function(dists_to_follower, min_dist_to_follower).mean()
-
 
     return 10.0 * r_is_moving * r_target_vel
+
+
+def naive_reward_2(env: Env, veh_id: str, fail=False):
+    """A reward function which rewards a vehicle that is not stopped and in a
+    system with high throughput efficiency."""
+    if fail:
+        return 0.0
+    
+    # If the vehicle indicated by veh_id is almost stopped, we want the reward to be 0
+    r_is_moving = penalize_close_to_stopping(env.k.vehicle.get_speed(veh_id))
+    r_throughput_efficiency = reward_high_efficiency(env)
+
+    return r_is_moving * r_throughput_efficiency
+
+
+def fancy_reward_2(
+    env: Env,
+    veh_id: str,
+    dist_to_leader: float,
+    dist_to_follower: float,
+    min_dist_to_leader: float,
+    min_dist_to_follower: float,
+    fail=False,
+):
+    r_naive = naive_reward_2(env, veh_id, fail=fail)
+    r_penalize_too_close_to_leader = penalize_too_close_to_others(
+        dist_to_leader, min_dist_to_leader
+    )
+    r_penalize_too_close_to_follower = penalize_too_close_to_others(
+        dist_to_follower, min_dist_to_follower
+    )
+
+    return (
+        r_penalize_too_close_to_leader
+        * r_penalize_too_close_to_follower
+        * r_naive
+    )

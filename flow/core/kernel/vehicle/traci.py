@@ -1,5 +1,6 @@
 """Script containing the TraCI vehicle kernel class."""
 import traceback
+from typing import Union
 
 from flow.core.kernel.vehicle import KernelVehicle
 import traci.constants as tc
