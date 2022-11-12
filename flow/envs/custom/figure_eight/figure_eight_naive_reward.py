@@ -1,7 +1,7 @@
 """Environment used to train vehicles to improve traffic on a highway."""
 import numpy as np
 from gym.spaces.box import Box
-from flow.core.custom_rewards import fancy_reward
+from flow.core.custom_rewards import naive_reward
 
 from flow.envs.multiagent.base import MultiEnv
 
@@ -20,7 +20,7 @@ ADDITIONAL_ENV_PARAMS = {
 }
 
 
-class MultiAgentHighwayFancyEnv(MultiEnv):
+class MultiAgentFigureEightNaiveEnv(MultiEnv):
     """Partially observable multi-agent environment for an highway with ramps.
     This environment is used to train autonomous vehicles to attenuate the
     formation and propagation of waves in an open highway network.
@@ -63,8 +63,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
     @property
     def observation_space(self):
         """See class definition."""
-        return Box(-float("inf"), float("inf"), shape=(7,), dtype=np.float32)
-        # return Box(-float("inf"), float("inf"), shape=(5,), dtype=np.float32)
+        return Box(-5, 5, shape=(8,), dtype=np.float32)
 
     @property
     def action_space(self):
@@ -115,6 +114,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
         max_length = self.k.network.length()
 
         for rl_id in self.k.vehicle.get_rl_ids():
+            this_pos = self.k.vehicle.get_x_by_id(rl_id)
             this_speed = self.k.vehicle.get_speed(rl_id)
             lead_id = self.k.vehicle.get_leader(rl_id)
             follower = self.k.vehicle.get_follower(rl_id)
@@ -127,7 +127,10 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
             else:
                 leader_is_av = float(lead_id in self.k.vehicle.get_rl_ids())
                 lead_speed = self.k.vehicle.get_speed(lead_id)
-                lead_head = self.k.vehicle.get_headway(lead_id)
+                lead_head = self.k.vehicle.get_x_by_id(lead_id) \
+                    - self.k.vehicle.get_x_by_id(rl_id) \
+                    - self.k.vehicle.get_length(rl_id)
+
 
             if follower in ["", None]:
                 # in case follower is not visible
@@ -141,6 +144,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
 
             observation = np.array(
                 [
+                    this_pos / max_length,
                     this_speed / max_speed,
                     (lead_speed - this_speed) / max_speed,
                     lead_head / max_length,
@@ -154,6 +158,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
             obs.update({rl_id: observation})
 
         return obs
+    
 
     def compute_reward(self, rl_actions, **kwargs):
         """See class definition."""
@@ -202,7 +207,7 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
                     # if there is no follower
                     dists_to_follower = -1
 
-                reward = fancy_reward(
+                reward = naive_reward(
                     self,
                     dists_to_leader,
                     dists_to_follower,
@@ -227,3 +232,11 @@ class MultiAgentHighwayFancyEnv(MultiEnv):
             follow_id = self.k.vehicle.get_follower(rl_id)
             if follow_id:
                 self.k.vehicle.set_observed(follow_id)
+
+    def reset(self):
+        """See parent class.
+
+        In addition, a few variables that are specific to this class are
+        emptied before they are used by the new rollout.
+        """
+        return super().reset()

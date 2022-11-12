@@ -15,7 +15,7 @@ from flow.networks.highway_ramps import ADDITIONAL_NET_PARAMS
 from flow.utils.registry import make_create_env
 from ray.tune.registry import register_env
 from flow.controllers import RLController, IDMController, ContinuousRouter, \
-                             IDMController_AvoidAVClumping, LaneChangeController_AvoidAVClumping
+                             IDMController_AvoidAVClumping, LaneChangeController_AvoidAVClumping_OffRamps
 
 
 # SET UP PARAMETERS FOR THE SIMULATION
@@ -23,37 +23,42 @@ from flow.controllers import RLController, IDMController, ContinuousRouter, \
 # number of training iterations
 N_TRAINING_ITERATIONS = 200
 # number of rollouts per training iteration
-N_ROLLOUTS = 40
+N_ROLLOUTS = 20
 # number of steps per rollout
 HORIZON = 1500
 # number of parallel workers
-N_CPUS = 5
+N_CPUS = 7
 
 # inflow rate on the highway in vehicles per hour
 HIGHWAY_INFLOW_RATE = 4000
+# inflow rate on each on-ramp in vehicles per hour
+ON_RAMPS_INFLOW_RATE = 450
 # percentage of autonomous vehicles compared to human vehicles on highway
 PENETRATION_RATE = 20
 
 
 # SET UP PARAMETERS FOR THE NETWORK
-
-additional_net_params = {
-    # length of the highway
-    "length": 1500,
-    # number of lanes
-    "lanes": 3,
-    # speed limit for all edges
-    "speed_limit": 40,
-    # number of edges to divide the highway into
-    "num_edges": 1,
-    # whether to include a ghost edge. This edge is provided a different speed
-    # limit.
-    "use_ghost_edge": False,
-    # speed limit for the ghost edge
-    "ghost_speed_limit": 25,
-    # length of the downstream ghost edge with the reduced speed limit
-    "boundary_cell_length": 500
-}
+additional_net_params = ADDITIONAL_NET_PARAMS.copy()
+additional_net_params.update({
+    # lengths of highway, on-ramps and off-ramps respectively
+    "highway_length": 1500,
+    "on_ramps_length": 250,
+    "off_ramps_length": 250,
+    # number of lanes on highway, on-ramps and off-ramps respectively
+    "highway_lanes": 3,
+    "on_ramps_lanes": 1,
+    "off_ramps_lanes": 1,
+    # speed limit on highway, on-ramps and off-ramps respectively
+    "highway_speed": 30,
+    "on_ramps_speed": 20,
+    "off_ramps_speed": 20,
+    # positions of the on-ramps
+    "on_ramps_pos": [500],
+    # positions of the off-ramps
+    "off_ramps_pos": [1000],
+    # probability for a vehicle to exit the highway at the next off-ramp
+    "next_off_ramp_proba": 0.25
+})
 
 
 # SET UP PARAMETERS FOR THE ENVIRONMENT
@@ -73,29 +78,26 @@ vehicles = VehicleParams()
 inflows = InFlows()
 
 # human vehicles
-vehicles.add(
-    veh_id="idm",
-    acceleration_controller=(IDMController, {
-        "noise": 0.2
-    }),
-    car_following_params=SumoCarFollowingParams(
-        speed_mode="obey_safe_speed",  # for safer behavior at the merges
-        tau=1.5  # larger distance between cars
-    ),
-    lane_change_params=SumoLaneChangeParams(lane_change_mode=1621))
-
-# Hate AVs
 # vehicles.add(
 #     veh_id="idm",
-#     acceleration_controller=(IDMController_AvoidAVClumping, {
-#         "noise": 0.2
-#     }),
-#     lane_change_controller=(LaneChangeController_AvoidAVClumping, {}),
 #     car_following_params=SumoCarFollowingParams(
 #         speed_mode="obey_safe_speed",  # for safer behavior at the merges
 #         tau=1.5  # larger distance between cars
 #     ),
 #     lane_change_params=SumoLaneChangeParams(lane_change_mode=1621))
+
+# Hate AVs
+vehicles.add(
+    veh_id="idm",
+    acceleration_controller=(IDMController_AvoidAVClumping, {
+        "noise": 0.2
+    }),
+    lane_change_controller=(LaneChangeController_AvoidAVClumping_OffRamps, {}),
+    car_following_params=SumoCarFollowingParams(
+        speed_mode="obey_safe_speed",  # for safer behavior at the merges
+        tau=1.5  # larger distance between cars
+    ),
+    lane_change_params=SumoLaneChangeParams(lane_change_mode=1621))
 
 # autonomous vehicles
 vehicles.add(
@@ -122,18 +124,27 @@ inflows.add(
     name="rl_highway_inflow",
     route="routehighway_0_0")
 
+# add human vehicles on all the on-ramps
+for i in range(len(additional_net_params['on_ramps_pos'])):
+    inflows.add(
+        veh_type="idm",
+        edge="on_ramp_{}".format(i),
+        vehs_per_hour=ON_RAMPS_INFLOW_RATE,
+        depart_lane="free",
+        depart_speed="max",
+        name="idm_on_ramp_inflow")
 
 # SET UP FLOW PARAMETERS
 
 flow_params = dict(
     # name of the experiment
-    exp_tag='multiagent_highway',
+    exp_tag='av4sg_highway_ramps_exp',
 
     # name of the flow environment the experiment is running on
     env_name=MultiAgentHighwayFancyEnv,
 
     # name of the network class the experiment is running on
-    network=HighwayNetwork,
+    network=HighwayRampsNetwork,
 
     # simulator that is used by the experiment
     simulator='traci',

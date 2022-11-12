@@ -58,46 +58,6 @@ def parse_args(args):
 
     return parser.parse_known_args(args)[0]
 
-
-def run_model_stablebaseline(flow_params,
-                             num_cpus=1,
-                             rollout_size=50,
-                             num_steps=50):
-    """Run the model for num_steps if provided.
-
-    Parameters
-    ----------
-    flow_params : dict
-        flow-specific parameters
-    num_cpus : int
-        number of CPUs used during training
-    rollout_size : int
-        length of a single rollout
-    num_steps : int
-        total number of training steps
-    The total rollout length is rollout_size.
-
-    Returns
-    -------
-    stable_baselines.*
-        the trained model
-    """
-    from stable_baselines.common.vec_env import DummyVecEnv, SubprocVecEnv
-    from stable_baselines import PPO2
-
-    if num_cpus == 1:
-        constructor = env_constructor(params=flow_params, version=0)()
-        # The algorithms require a vectorized environment to run
-        env = DummyVecEnv([lambda: constructor])
-    else:
-        env = SubprocVecEnv([env_constructor(params=flow_params, version=i)
-                             for i in range(num_cpus)])
-
-    train_model = PPO2('MlpPolicy', env, verbose=1, n_steps=rollout_size)
-    train_model.learn(total_timesteps=num_steps)
-    return train_model
-
-
 def setup_exps_rllib(flow_params,
                      n_cpus,
                      n_rollouts,
@@ -202,7 +162,7 @@ def train_rllib(submodule, flags):
         },
         "checkpoint_freq": 1,
         "checkpoint_at_end": True,
-        "max_failures": 999,
+        "max_failures": 1,
         "stop": {
             "training_iteration": flags.num_steps,
         },
@@ -211,127 +171,6 @@ def train_rllib(submodule, flags):
     if flags.checkpoint_path is not None:
         exp_config['restore'] = flags.checkpoint_path
     run_experiments({flow_params["exp_tag"]: exp_config})
-
-
-def train_h_baselines(env_name, args, multiagent):
-    """Train policies using SAC and TD3 with h-baselines."""
-    from hbaselines.algorithms import OffPolicyRLAlgorithm
-    from hbaselines.utils.train import parse_options, get_hyperparameters
-
-    # Get the command-line arguments that are relevant here
-    args = parse_options(description="", example_usage="", args=args)
-
-    # the base directory that the logged data will be stored in
-    base_dir = "training_data"
-
-    for i in range(args.n_training):
-        # value of the next seed
-        seed = args.seed + i
-
-        # The time when the current experiment started.
-        now = strftime("%Y-%m-%d-%H:%M:%S")
-
-        # Create a save directory folder (if it doesn't exist).
-        dir_name = os.path.join(base_dir, '{}/{}'.format(args.env_name, now))
-        ensure_dir(dir_name)
-
-        # Get the policy class.
-        if args.alg == "TD3":
-            if multiagent:
-                from hbaselines.multi_fcnet.td3 import MultiFeedForwardPolicy
-                policy = MultiFeedForwardPolicy
-            else:
-                from hbaselines.fcnet.td3 import FeedForwardPolicy
-                policy = FeedForwardPolicy
-        elif args.alg == "SAC":
-            if multiagent:
-                from hbaselines.multi_fcnet.sac import MultiFeedForwardPolicy
-                policy = MultiFeedForwardPolicy
-            else:
-                from hbaselines.fcnet.sac import FeedForwardPolicy
-                policy = FeedForwardPolicy
-        else:
-            raise ValueError("Unknown algorithm: {}".format(args.alg))
-
-        # Get the hyperparameters.
-        hp = get_hyperparameters(args, policy)
-
-        # Add the seed for logging purposes.
-        params_with_extra = hp.copy()
-        params_with_extra['seed'] = seed
-        params_with_extra['env_name'] = args.env_name
-        params_with_extra['policy_name'] = policy.__name__
-        params_with_extra['algorithm'] = args.alg
-        params_with_extra['date/time'] = now
-
-        # Add the hyperparameters to the folder.
-        with open(os.path.join(dir_name, 'hyperparameters.json'), 'w') as f:
-            json.dump(params_with_extra, f, sort_keys=True, indent=4)
-
-        # Create the algorithm object.
-        alg = OffPolicyRLAlgorithm(
-            policy=policy,
-            env="flow:{}".format(env_name),
-            eval_env="flow:{}".format(env_name) if args.evaluate else None,
-            **hp
-        )
-
-        # Perform training.
-        alg.learn(
-            total_steps=args.total_steps,
-            log_dir=dir_name,
-            log_interval=args.log_interval,
-            eval_interval=args.eval_interval,
-            save_interval=args.save_interval,
-            initial_exploration_steps=args.initial_exploration_steps,
-            seed=seed,
-        )
-
-
-def train_stable_baselines(submodule, flags):
-    """Train policies using the PPO algorithm in stable-baselines."""
-    from stable_baselines.common.vec_env import DummyVecEnv
-    from stable_baselines import PPO2
-
-    flow_params = submodule.flow_params
-    # Path to the saved files
-    exp_tag = flow_params['exp_tag']
-    result_name = '{}/{}'.format(exp_tag, strftime("%Y-%m-%d-%H:%M:%S"))
-
-    # Perform training.
-    print('Beginning training.')
-    model = run_model_stablebaseline(
-        flow_params, flags.num_cpus, flags.rollout_size, flags.num_steps)
-
-    # Save the model to a desired folder and then delete it to demonstrate
-    # loading.
-    print('Saving the trained model!')
-    path = os.path.realpath(os.path.expanduser('~/baseline_results'))
-    ensure_dir(path)
-    save_path = os.path.join(path, result_name)
-    model.save(save_path)
-
-    # dump the flow params
-    with open(os.path.join(path, result_name) + '.json', 'w') as outfile:
-        json.dump(flow_params, outfile,
-                  cls=FlowParamsEncoder, sort_keys=True, indent=4)
-
-    # Replay the result by loading the model
-    print('Loading the trained model and testing it out!')
-    model = PPO2.load(save_path)
-    flow_params = get_flow_params(os.path.join(path, result_name) + '.json')
-    flow_params['sim'].render = True
-    env = env_constructor(params=flow_params, version=0)()
-    # The algorithms require a vectorized environment to run
-    eval_env = DummyVecEnv([lambda: env])
-    obs = eval_env.reset()
-    reward = 0
-    for _ in range(flow_params['env'].horizon):
-        action, _states = model.predict(obs)
-        obs, rewards, dones, info = eval_env.step(action)
-        reward += rewards
-    print('the final reward is {}'.format(reward))
-
 
 def main(args):
     """Perform the training operations."""
@@ -362,10 +201,6 @@ def main(args):
     # Perform the training operation.
     if flags.rl_trainer.lower() == "rllib":
         train_rllib(submodule, flags)
-    elif flags.rl_trainer.lower() == "stable-baselines":
-        train_stable_baselines(submodule, flags)
-    elif flags.rl_trainer.lower() == "h-baselines":
-        train_h_baselines(flags.exp_config, args, multiagent)
     else:
         raise ValueError("rl_trainer should be either 'rllib', 'h-baselines', "
                          "or 'stable-baselines'.")

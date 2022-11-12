@@ -6,17 +6,22 @@ a variable length ring road.
 from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
 from ray.tune.registry import register_env
 
-from flow.core.params import SumoParams, EnvParams, InitialConfig, NetParams
+from flow.core.params import EnvParams, NetParams, InitialConfig, InFlows, \
+                             VehicleParams, SumoParams, \
+                             SumoCarFollowingParams, SumoLaneChangeParams
 from flow.core.params import VehicleParams, SumoCarFollowingParams
 from flow.controllers import RLController, IDMController, ContinuousRouter
 from flow.envs.multiagent import MultiAgentWaveAttenuationPOEnv, ringtest
 from flow.networks import RingNetwork
 from flow.utils.registry import make_create_env
+from flow.controllers import RLController, IDMController, ContinuousRouter, \
+                             IDMController_AvoidAVClumping, LaneChangeController_AvoidAVClumping
+from flow.envs import MultiAgentHighwayFancyEnv
 
 # time horizon of a single rollout
 HORIZON = 3000
 # number of rollouts per training iteration
-N_ROLLOUTS = 20
+N_ROLLOUTS = 5
 # number of parallel workers
 N_CPUS = 7
 # number of automated vehicles. Must be less than or equal to 22.
@@ -41,12 +46,15 @@ for i in range(NUM_AUTOMATED):
     humans_remaining -= vehicles_to_add
     vehicles.add(
         veh_id="human_{}".format(i),
-        acceleration_controller=(IDMController, {
-            "noise": 0.2
+         acceleration_controller=(IDMController_AvoidAVClumping, {
+        "noise": 0.2
         }),
+        lane_change_controller=(LaneChangeController_AvoidAVClumping, {}),
         car_following_params=SumoCarFollowingParams(
-            min_gap=0
+            speed_mode="obey_safe_speed",  # for safer behavior at the merges
+            tau=1.5  # larger distance between cars
         ),
+        lane_change_params=SumoLaneChangeParams(lane_change_mode=1621),
         routing_controller=(ContinuousRouter, {}),
         num_vehicles=vehicles_to_add)
 
@@ -56,7 +64,7 @@ flow_params = dict(
     exp_tag="multiagent_ring",
 
     # name of the flow environment the experiment is running on
-    env_name=ringtest,
+    env_name=MultiAgentHighwayFancyEnv,
 
     # name of the network class the experiment is running on
     network=RingNetwork,
@@ -79,8 +87,9 @@ flow_params = dict(
         additional_params={
             "max_accel": 1,
             "max_decel": 1,
-            "ring_length": [1000, 1200],
-            'target_velocity': 30
+            "ring_length": [900, 1100],
+            'target_velocity': 30,
+            'lane_change_duration': 3
         },
     ),
 
@@ -88,9 +97,9 @@ flow_params = dict(
     # network's documentation or ADDITIONAL_NET_PARAMS component)
     net=NetParams(
         additional_params={
-            "length": 260,
-            "lanes": 4,
-            "speed_limit": 30,
+            "length": 1000,
+            "lanes": 3,
+            "speed_limit": 40,
             "resolution": 40,
         }, ),
 

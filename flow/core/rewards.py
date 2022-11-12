@@ -86,8 +86,8 @@ def desired_velocity(env, fail=False, edge_list=None):
     # epsilon term (to deal with ZeroDivisionError exceptions)
     eps = np.finfo(np.float32).eps
 
-    # return max(max_cost - cost, 0) / (max_cost + eps)
-    return -cost / (max_cost + eps)
+    return max(max_cost - cost, 0) / (max_cost + eps)
+    # return -cost / (max_cost + eps)
 
 
 def average_velocity(env, fail=False):

@@ -23,7 +23,7 @@ from flow.controllers import RLController, IDMController, ContinuousRouter, \
 # number of training iterations
 N_TRAINING_ITERATIONS = 200
 # number of rollouts per training iteration
-N_ROLLOUTS = 40
+N_ROLLOUTS = 10
 # number of steps per rollout
 HORIZON = 1500
 # number of parallel workers
@@ -73,29 +73,26 @@ vehicles = VehicleParams()
 inflows = InFlows()
 
 # human vehicles
-vehicles.add(
-    veh_id="idm",
-    acceleration_controller=(IDMController, {
-        "noise": 0.2
-    }),
-    car_following_params=SumoCarFollowingParams(
-        speed_mode="obey_safe_speed",  # for safer behavior at the merges
-        tau=1.5  # larger distance between cars
-    ),
-    lane_change_params=SumoLaneChangeParams(lane_change_mode=1621))
-
-# Hate AVs
 # vehicles.add(
 #     veh_id="idm",
-#     acceleration_controller=(IDMController_AvoidAVClumping, {
-#         "noise": 0.2
-#     }),
-#     lane_change_controller=(LaneChangeController_AvoidAVClumping, {}),
 #     car_following_params=SumoCarFollowingParams(
 #         speed_mode="obey_safe_speed",  # for safer behavior at the merges
 #         tau=1.5  # larger distance between cars
 #     ),
 #     lane_change_params=SumoLaneChangeParams(lane_change_mode=1621))
+
+# Hate AVs
+vehicles.add(
+    veh_id="idm",
+    acceleration_controller=(IDMController_AvoidAVClumping, {
+        "noise": 0.2
+    }),
+    lane_change_controller=(LaneChangeController_AvoidAVClumping, {}),
+    car_following_params=SumoCarFollowingParams(
+        speed_mode="obey_safe_speed",  # for safer behavior at the merges
+        tau=1.5  # larger distance between cars
+    ),
+    lane_change_params=SumoLaneChangeParams(lane_change_mode=1621))
 
 # autonomous vehicles
 vehicles.add(

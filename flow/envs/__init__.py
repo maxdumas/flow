@@ -24,6 +24,9 @@ from flow.envs.custom.highway_regulation import HighwayRegulationEnv
 
 from flow.envs.custom.highway_fancy_reward import MultiAgentHighwayFancyEnv
 
+from flow.envs.custom.figure_eight.figure_eight_naive_reward import MultiAgentFigureEightNaiveEnv
+from flow.envs.custom.figure_eight.figure_eight_fancy_reward import MultiAgentFigureEightFancyEnv
+
 
 __all__ = [
     'Env',
@@ -49,5 +52,7 @@ __all__ = [
     'PO_TrafficLightGridEnv',
     'GreenWaveTestEnv',
     'RegulationEnv',
-    'MultiAgentHighwayFancyEnv'
+    'MultiAgentHighwayFancyEnv',
+    'MultiAgentFigureEightNaiveEnv',
+    'MultiAgentFigureEightFancyEnv'
 ]
