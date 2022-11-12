@@ -39,6 +39,14 @@ def dumas_reward(env, fail=False, edge_list=None):
     return r_target * r_moving / max_r_target
 
 
+def exp(x):
+    """
+    This is a modified sigmoid function that will return ~0 at x <= 0, and ~1
+    at x >= 1, with an S-shaped curve for the values in between.
+    """
+    return expit(6 * (2 * x - 1))
+
+
 def penalize_close_to_stopping(v: float) -> float:
     """
     Reward component that penalizes velocities that are close to 0
@@ -50,16 +58,12 @@ def penalize_close_to_stopping(v: float) -> float:
 
 def penalize_too_close_to_others(dist: float, dist_min: float) -> float:
     """
-    Reward component to penalize headways that are too small. This is a modified
-    sigmoid function that will return ~0 at dist <= 0, and ~1 at dist >=
-    dist_min, regardless of the value of dist_min. As such, it will have a
-    shallower slope for larger dist_min and a narrower slow for smaller
-    dist_min.
+    Reward component to penalize headways that are too small.
     """
     if dist < 0:
         # Assume the dist is invalid and ignore this reward, if < 0
         return 1.0
-    return expit(6 * (2 * dist / dist_min - 1))
+    return exp(dist / dist_min)
 
 
 def reward_target_velocity(v: float, v_t: float, spread: float):
@@ -70,10 +74,13 @@ def reward_target_velocity(v: float, v_t: float, spread: float):
     D = norm(loc=v_t, scale=spread)
     return D.pdf(v)
 
+
 def reward_high_efficiency(env: Env, time_span=10):
     """Reward component that returns the ratio of inflows to outflows over
     time_span. Note that this reward only makes sense in open networks."""
-    return env.k.vehicle.get_outflow_rate(time_span) / env.k.vehicle.get_inflow_rate(time_span)
+    return env.k.vehicle.get_outflow_rate(time_span) / env.k.vehicle.get_inflow_rate(
+        time_span
+    )
 
 
 def fancy_reward(
@@ -160,7 +167,7 @@ def naive_reward_2(env: Env, veh_id: str, fail=False):
     system with high throughput efficiency."""
     if fail:
         return 0.0
-    
+
     # If the vehicle indicated by veh_id is almost stopped, we want the reward to be 0
     r_is_moving = penalize_close_to_stopping(env.k.vehicle.get_speed(veh_id))
     r_throughput_efficiency = reward_high_efficiency(env)
@@ -173,20 +180,39 @@ def fancy_reward_2(
     veh_id: str,
     dist_to_leader: float,
     dist_to_follower: float,
-    min_dist_to_leader: float,
-    min_dist_to_follower: float,
+    desired_dist_to_leader: float,
+    desired_dist_to_follower: float,
     fail=False,
 ):
+    """
+    A reward function which rewards a vehicle that is not stopped and in a
+    system with high throughput efficiency, and penalizes the vehicle if it is
+    too close to its leader or follower.
+
+    :param desired_dist_to_leader The distance that the vehicle should maintain to
+    the vehicle in front of it when traveling at the speed limit. Note that this
+    value will be smoothly interpolated to zero as the vehicle's speed decreases
+    below the speed limit.
+
+    :param desired_dist_to_follower The distance that the vehicle should maintain to
+    the vehicle behind it when traveling at the speed limit. Note that this
+    value will be smoothly interpolated to zero as the vehicle's speed decreases
+    below the speed limit.
+    """
+
     r_naive = naive_reward_2(env, veh_id, fail=fail)
+
+    v = env.k.vehicle.get_speed(veh_id)
+    speed_limit = env.net_params.additional_params["speed_limit"]
+
+    # An s-shaped curve from 0 at v=0 to 1 at v=speed_limit
+    s = exp(v / speed_limit)
+
     r_penalize_too_close_to_leader = penalize_too_close_to_others(
-        dist_to_leader, min_dist_to_leader
+        dist_to_leader, s * desired_dist_to_leader
     )
     r_penalize_too_close_to_follower = penalize_too_close_to_others(
-        dist_to_follower, min_dist_to_follower
+        dist_to_follower, s * desired_dist_to_follower
     )
 
-    return (
-        r_penalize_too_close_to_leader
-        * r_penalize_too_close_to_follower
-        * r_naive
-    )
+    return r_penalize_too_close_to_leader * r_penalize_too_close_to_follower * r_naive
