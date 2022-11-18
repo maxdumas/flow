@@ -261,7 +261,8 @@ class TraCISimulation(KernelSimulation):
     def teardown_sumo(self):
         """Kill the sumo subprocess instance."""
         try:
-            os.killpg(self.sumo_proc.pid, signal.SIGTERM)
+            # os.killpg(self.sumo_proc.pid, signal.SIGTERM)
+            subprocess.call(['taskkill', '/F', '/T', '/PID', str(self.sumo_proc.pid)])
         except Exception as e:
             print("Error during teardown: {}".format(e))
 

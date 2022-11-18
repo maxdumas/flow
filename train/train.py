@@ -18,6 +18,8 @@ from flow.utils.registry import env_constructor
 from flow.utils.rllib import FlowParamsEncoder, get_flow_params
 from flow.utils.registry import make_create_env
 
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+
 
 def parse_args(args):
     """Parse training options user can specify in command line.
@@ -60,6 +62,7 @@ def parse_args(args):
 
 def setup_exps_rllib(flow_params,
                      n_cpus,
+                     n_gpus,
                      n_rollouts,
                      policy_graphs=None,
                      policy_mapping_fn=None,
@@ -104,15 +107,22 @@ def setup_exps_rllib(flow_params,
     agent_cls = get_agent_class(alg_run)
     config = deepcopy(agent_cls._default_config)
 
+    # Hyper-parameter doc: https://docs.ray.io/en/latest/rllib/rllib-training.html
     config["num_workers"] = n_cpus
+    config["num_gpus"] = n_gpus
     config["train_batch_size"] = horizon * n_rollouts
-    config["gamma"] = 0.999  # discount rate
-    config["model"].update({"fcnet_hiddens": [32, 32, 32]})
+    config["gamma"] = 0.995  # discount rate
+    config["model"].update({"fcnet_hiddens": [64, 64]})
+    config["model"].update({"fcnet_activation": "tanh"})
     config["use_gae"] = True
     config["lambda"] = 0.97
     config["kl_target"] = 0.02
     config["num_sgd_iter"] = 10
     config["horizon"] = horizon
+    config["framework"] = 'torch'
+    config['batch_mode'] = 'complete_episodes'
+    config['rollout_fragment_length'] = 500
+    # config['multiagent'].update({'count_steps_by': 'agent_steps'})
 
     # save the flow params for replay
     flow_json = json.dumps(
@@ -136,24 +146,24 @@ def setup_exps_rllib(flow_params,
     register_env(gym_name, create_env)
     return alg_run, gym_name, config
 
-
-def train_rllib(submodule, flags):
-    """Train policies using the PPO algorithm in RLlib."""
+def gen_exp(submodule, flags):
+    """Generate experiments from exp_config."""
     import ray
-    from ray.tune import run_experiments
 
     flow_params = submodule.flow_params
     n_cpus = submodule.N_CPUS
+    n_gpus = submodule.N_GPUS
     n_rollouts = submodule.N_ROLLOUTS
+    n_steps = submodule.N_STEPS
     policy_graphs = getattr(submodule, "POLICY_GRAPHS", None)
     policy_mapping_fn = getattr(submodule, "policy_mapping_fn", None)
     policies_to_train = getattr(submodule, "policies_to_train", None)
 
     alg_run, gym_name, config = setup_exps_rllib(
-        flow_params, n_cpus, n_rollouts,
+        flow_params, n_cpus, n_gpus, n_rollouts,
         policy_graphs, policy_mapping_fn, policies_to_train)
 
-    ray.init(num_cpus=n_cpus + 1, object_store_memory=200 * 1024 * 1024)
+    # ray.init(num_cpus=n_cpus + 1, num_gpus=n_gpus, object_store_memory=200 * 1024 * 1024)
     exp_config = {
         "run": alg_run,
         "env": gym_name,
@@ -164,47 +174,154 @@ def train_rllib(submodule, flags):
         "checkpoint_at_end": True,
         "max_failures": 1,
         "stop": {
-            "training_iteration": flags.num_steps,
+            "training_iteration": n_steps,
         },
     }
+    return flow_params["exp_tag"], exp_config
 
-    if flags.checkpoint_path is not None:
+def train_rllib(experiments, flags, concurrent=False, reuse_actors=True):
+    """Return the relevant components of an RLlib experiment.
+
+        Parameters
+        ----------
+        experiments : dict
+            {tag1: exp_config1, tag2: exp_config2, ...}
+
+        flags : flags
+
+        concurrent : bool
+            Whether running experiments in parallel or one by one
+
+        reuse_actors : bool
+            If your trainable is slow to initialize, consider setting reuse_actors=True
+            to reduce actor creation overheads
+
+        Returns
+        -------
+        None
+        """
+    import ray
+    from ray.tune import run_experiments
+
+    ray.init(num_cpus= 12, num_gpus=1, object_store_memory=1000 * 1024 * 1024)
+
+    if len(experiments) == 1 and flags.checkpoint_path is not None:
         exp_config['restore'] = flags.checkpoint_path
-    run_experiments({flow_params["exp_tag"]: exp_config})
+    # experiments
+    run_experiments(experiments, concurrent=concurrent, reuse_actors=reuse_actors)
 
 def main(args):
     """Perform the training operations."""
     # Parse script-level arguments (not including package arguments).
     flags = parse_args(args)
+    # store the experiments as dict and pass it in run_experiments
+    experiments = {}
+    exps_to_train = flags.exp_config
+    with open(exps_to_train) as f:
+        lines = f.readlines()
+    for line in lines:
+        exp_config = line.strip()
 
-    # Import relevant information from the exp_config script.
-    module = __import__(
-        "exp_configs.rl.singleagent", fromlist=[flags.exp_config])
-    module_ma = __import__(
-        "exp_configs.rl.multiagent", fromlist=[flags.exp_config])
+        # Import relevant information from the exp_config script.
+        module = __import__(
+            "examples.exp_configs.rl.singleagent", fromlist=[exp_config])
+        module_ma = __import__(
+            "examples.exp_configs.rl.multiagent", fromlist=[exp_config])
 
-    # Import the sub-module containing the specified exp_config and determine
-    # whether the environment is single agent or multi-agent.
-    if hasattr(module, flags.exp_config):
-        submodule = getattr(module, flags.exp_config)
-        multiagent = False
-    elif hasattr(module_ma, flags.exp_config):
-        submodule = getattr(module_ma, flags.exp_config)
-        assert flags.rl_trainer.lower() in ["rllib", "h-baselines"], \
-            "Currently, multiagent experiments are only supported through "\
-            "RLlib. Try running this experiment using RLlib: " \
-            "'python train.py EXP_CONFIG'"
-        multiagent = True
-    else:
-        raise ValueError("Unable to find experiment config.")
+        # Import the sub-module containing the specified exp_config and determine
+        # whether the environment is single agent or multi-agent.
+        if hasattr(module, exp_config):
+            submodule = getattr(exp_config)
+            multiagent = False
+        elif hasattr(module_ma, exp_config):
+            submodule = getattr(module_ma, exp_config)
+            assert flags.rl_trainer.lower() in ["rllib", "h-baselines"], \
+                "Currently, multiagent experiments are only supported through "\
+                "RLlib. Try running this experiment using RLlib: " \
+                "'python train.py EXP_CONFIG'"
+            multiagent = True
+        else:
+            raise ValueError("Unable to find experiment config.")
 
-    # Perform the training operation.
-    if flags.rl_trainer.lower() == "rllib":
-        train_rllib(submodule, flags)
-    else:
-        raise ValueError("rl_trainer should be either 'rllib', 'h-baselines', "
-                         "or 'stable-baselines'.")
-
+        # Perform the training operation.
+        if flags.rl_trainer.lower() == "rllib":
+           tag, config = gen_exp(submodule, flags)
+           experiments[tag] = config
+        else:
+            raise ValueError("rl_trainer should be either 'rllib', 'h-baselines', "
+                             "or 'stable-baselines'.")
+    train_rllib(experiments, flags)
 
 if __name__ == "__main__":
     main(sys.argv[1:])
+
+# def train_rllib(submodule, flags):
+#     """Train policies using the PPO algorithm in RLlib."""
+#     import ray
+#     from ray.tune import run_experiments
+#
+#     flow_params = submodule.flow_params
+#     n_cpus = submodule.N_CPUS
+#     n_gpus = submodule.N_GPUS
+#     n_rollouts = submodule.N_ROLLOUTS
+#     policy_graphs = getattr(submodule, "POLICY_GRAPHS", None)
+#     policy_mapping_fn = getattr(submodule, "policy_mapping_fn", None)
+#     policies_to_train = getattr(submodule, "policies_to_train", None)
+#
+#     alg_run, gym_name, config = setup_exps_rllib(
+#         flow_params, n_cpus, n_gpus, n_rollouts,
+#         policy_graphs, policy_mapping_fn, policies_to_train)
+#
+#     ray.init(num_cpus=n_cpus + 1, num_gpus=n_gpus, object_store_memory=200 * 1024 * 1024)
+#     exp_config = {
+#         "run": alg_run,
+#         "env": gym_name,
+#         "config": {
+#             **config
+#         },
+#         "checkpoint_freq": 1,
+#         "checkpoint_at_end": True,
+#         "max_failures": 1,
+#         "stop": {
+#             "training_iteration": flags.num_steps,
+#         },
+#     }
+#
+#     if flags.checkpoint_path is not None:
+#         exp_config['restore'] = flags.checkpoint_path
+#     run_experiments({flow_params["exp_tag"]: exp_config})
+
+# def main(args):
+#     """Perform the training operations."""
+#     # Parse script-level arguments (not including package arguments).
+#     flags = parse_args(args)
+#
+#     # Import relevant information from the exp_config script.
+#     module = __import__(
+#         "examples.exp_configs.rl.singleagent", fromlist=[flags.exp_config])
+#     module_ma = __import__(
+#         "examples.exp_configs.rl.multiagent", fromlist=[flags.exp_config])
+#
+#     # Import the sub-module containing the specified exp_config and determine
+#     # whether the environment is single agent or multi-agent.
+#     if hasattr(module, flags.exp_config):
+#         submodule = getattr(module, flags.exp_config)
+#         multiagent = False
+#     elif hasattr(module_ma, flags.exp_config):
+#         submodule = getattr(module_ma, flags.exp_config)
+#         assert flags.rl_trainer.lower() in ["rllib", "h-baselines"], \
+#             "Currently, multiagent experiments are only supported through "\
+#             "RLlib. Try running this experiment using RLlib: " \
+#             "'python train.py EXP_CONFIG'"
+#         multiagent = True
+#     else:
+#         raise ValueError("Unable to find experiment config.")
+#
+#     # Perform the training operation.
+#     if flags.rl_trainer.lower() == "rllib":
+#         train_rllib(submodule, flags)
+#     else:
+#         raise ValueError("rl_trainer should be either 'rllib', 'h-baselines', "
+#                          "or 'stable-baselines'.")
+
+

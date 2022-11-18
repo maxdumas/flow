@@ -1,4 +1,4 @@
-"""Contains the bottleneck network class."""
+B"""Contains the bottleneck network class."""
 
 from flow.core.params import InitialConfig
 from flow.core.params import TrafficLightParams

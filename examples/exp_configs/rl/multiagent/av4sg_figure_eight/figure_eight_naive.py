@@ -1,5 +1,9 @@
 """Figure eight example."""
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_torch_policy import PPOTorchPolicy
+# from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.tune.registry import register_env
 
 from flow.core.params import SumoParams, EnvParams, InitialConfig, NetParams
@@ -17,10 +21,11 @@ HORIZON = 5000
 # number of rollouts per training iteration
 # N_ROLLOUTS = 20
 N_ROLLOUTS = 5
+N_STEPS = 5
 # number of parallel workers
 # N_CPUS = 2
-N_CPUS = 7
-
+N_CPUS = 3
+N_GPUS = 1
 # desired velocity for all vehicles in the network, in m/s
 TARGET_VELOCITY = 30
 # maximum acceleration for autonomous vehicles, in m/s^2
@@ -88,7 +93,7 @@ for i in range(NUM_AUTOMATED):
 
 flow_params = dict(
     # name of the experiment
-    exp_tag='figure_eight_exp',
+    exp_tag='figure_eight_naive',
 
     # name of the flow environment the experiment is running on
     env_name=MultiAgentFigureEightNaiveEnv,
@@ -104,7 +109,8 @@ flow_params = dict(
         sim_step=0.1,
         render=False,
         overtake_right=True,
-        restart_instance=True
+        restart_instance=True,
+        print_warnings=False
     ),
 
     # environment related parameters (see flow.core.params.EnvParams)
@@ -147,7 +153,7 @@ act_space = test_env.action_space
 
 def gen_policy():
     """Generate a policy in RLlib."""
-    return PPOTFPolicy, obs_space, act_space, {}
+    return PPOTorchPolicy, obs_space, act_space, {}
 
 
 # Setup PG with an ensemble of `num_policies` different policy graphs

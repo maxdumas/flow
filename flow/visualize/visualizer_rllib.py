@@ -61,6 +61,7 @@ def visualizer_rllib(args):
         multiagent = True
         pkl = get_rllib_pkl(result_dir)
         config['multiagent'] = pkl['multiagent']
+        config['callbacks'] = pkl['callbacks']
     else:
         multiagent = False
 

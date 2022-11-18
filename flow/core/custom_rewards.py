@@ -78,9 +78,9 @@ def reward_target_velocity(v: float, v_t: float, spread: float):
 def reward_high_efficiency(env: Env, time_span=10):
     """Reward component that returns the ratio of inflows to outflows over
     time_span. Note that this reward only makes sense in open networks."""
-    return env.k.vehicle.get_outflow_rate(time_span) / env.k.vehicle.get_inflow_rate(
-        time_span
-    )
+    inflow = env.k.vehicle.get_inflow_rate(10 * env.sim_step)
+    inflow = inflow if inflow != 0.0 else 2000.0
+    return env.k.vehicle.get_outflow_rate(time_span * env.sim_step) / inflow
 
 
 def fancy_reward(

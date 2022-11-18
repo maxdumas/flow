@@ -27,6 +27,10 @@ from flow.envs.custom.highway_fancy_reward import MultiAgentHighwayFancyEnv
 from flow.envs.custom.figure_eight.figure_eight_naive_reward import MultiAgentFigureEightNaiveEnv
 from flow.envs.custom.figure_eight.figure_eight_fancy_reward import MultiAgentFigureEightFancyEnv
 
+from flow.envs.custom.bottleneck.bottleneck_multiagent import MultiAgentBottleneckEnv
+from flow.envs.custom.bottleneck.bottleneck_fancy_env import MultiAgentBottleneckDesiredThroughputEnv_Fancy
+from flow.envs.custom.bottleneck.bottleneck_naive_env import MultiAgentBottleneckDesiredThroughputEnv_Naive
+
 
 __all__ = [
     'Env',
@@ -54,5 +58,8 @@ __all__ = [
     'RegulationEnv',
     'MultiAgentHighwayFancyEnv',
     'MultiAgentFigureEightNaiveEnv',
-    'MultiAgentFigureEightFancyEnv'
+    'MultiAgentFigureEightFancyEnv',
+    'MultiAgentBottleneckEnv',
+    'MultiAgentBottleneckDesiredThroughputEnv_Fancy',
+    'MultiAgentBottleneckDesiredThroughputEnv_Naive'
 ]

@@ -14,6 +14,7 @@ from flow.controllers.routing_controllers import ContinuousRouter
 from flow.core.params import InFlows, NetParams
 from flow.core.params import SumoCarFollowingParams, SumoLaneChangeParams
 from flow.core.params import VehicleParams
+from flow.envs.multiagent.base import MultiEnv
 
 from copy import deepcopy
 

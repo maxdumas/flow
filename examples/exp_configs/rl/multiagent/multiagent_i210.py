@@ -5,7 +5,7 @@ highway with ramps network.
 """
 import os
 
-from ray.rllib.agents.ppo.ppo_policy import PPOTFPolicy
+from ray.rllib.agents.ppo.ppo_tf_policy import PPOTFPolicy
 from ray.tune.registry import register_env
 
 import flow.config as config
