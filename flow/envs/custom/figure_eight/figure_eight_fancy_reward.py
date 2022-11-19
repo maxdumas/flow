@@ -2,6 +2,7 @@
 import numpy as np
 from gym.spaces.box import Box
 from flow.core.custom_rewards import fancy_reward
+from flow.core.state_fragments import get_surrounding_headways
 
 from flow.envs.multiagent.base import MultiEnv
 
@@ -34,11 +35,13 @@ class MultiAgentFigureEightFancyEnv(MultiEnv):
     * target_velocity: desired velocity for all vehicles in the network, in m/s
     The following states, actions and rewards are considered for one autonomous
     vehicle only, as they will be computed in the same way for each of them.
+
     States
-        The observation consists of the speeds and bumper-to-bumper headways of
-        the vehicles immediately preceding and following autonomous vehicle,
-        whether or not the leader and follower are also autonomous vehicles,as
-        well as the speed of the autonomous vehicle.
+        The observation consists of:
+            * the speeds and bumper-to-bumper headways of the vehicles immediately preceding and following autonomous vehicle,
+            * whether or not the leader and follower are also autonomous vehicles
+            * the speed of the autonomous vehicle
+            * the position of the autonomous vehicle in the network
     Actions
         The action consists of an acceleration, bound according to the
         environment parameters, as well as three values that will be converted
@@ -63,7 +66,7 @@ class MultiAgentFigureEightFancyEnv(MultiEnv):
     @property
     def observation_space(self):
         """See class definition."""
-        return Box(-5, 5, shape=(8,), dtype=np.float32)
+        return Box(-5, 5, shape=(12,), dtype=np.float32)
 
     @property
     def action_space(self):
@@ -123,48 +126,41 @@ class MultiAgentFigureEightFancyEnv(MultiEnv):
                 # in case leader is not visible
                 leader_is_av = 0.0
                 lead_speed = max_speed
-                lead_head = max_length
             else:
                 leader_is_av = float(lead_id in self.k.vehicle.get_rl_ids())
                 lead_speed = self.k.vehicle.get_speed(lead_id)
-                lead_head = self.k.vehicle.get_x_by_id(lead_id) \
-                    - self.k.vehicle.get_x_by_id(rl_id) \
-                    - self.k.vehicle.get_length(rl_id)
-
 
             if follower in ["", None]:
                 # in case follower is not visible
                 follower_is_av = 0.0
                 follow_speed = 0
-                follow_head = max_length
             else:
                 follower_is_av = float(follower in self.k.vehicle.get_rl_ids())
                 follow_speed = self.k.vehicle.get_speed(follower)
-                follow_head = self.k.vehicle.get_headway(follower)
 
             observation = np.array(
                 [
                     this_pos / max_length,
                     this_speed / max_speed,
                     (lead_speed - this_speed) / max_speed,
-                    lead_head / max_length,
                     (this_speed - follow_speed) / max_speed,
-                    follow_head / max_length,
                     leader_is_av,  # This is 1.0 if the leader is also an AV, 0.0 otherwise.
                     follower_is_av,  # This is 1.0 if the follower is also an AV, 0.0 otherwise.
+                    *get_surrounding_headways(self, rl_id),
                 ]
             )
 
             obs.update({rl_id: observation})
 
         return obs
-    
 
     def compute_reward(self, rl_actions, **kwargs):
         """See class definition."""
         # in the warmup steps
         if rl_actions is None:
             return {}
+
+        max_length = self.k.network.length()
 
         rewards = {}
         for rl_id in self.k.vehicle.get_rl_ids():
@@ -173,46 +169,26 @@ class MultiAgentFigureEightFancyEnv(MultiEnv):
                 reward = self.k.vehicle.get_speed(rl_id)
             elif kwargs["fail"]:
                 # reward is 0 if a collision occurred
-                reward = 0
+                reward = 0.0
             else:
-                dists_to_leader = 0
-                dists_to_follower = 0
-                min_dist_to_leader = 0
-                min_dist_to_follower = 0
+                headways_normalized = get_surrounding_headways(self, rl_id)
 
-                # penalize small headways to the leader of thiAV
                 lead_id = self.k.vehicle.get_leader(rl_id)
-                if lead_id not in ["", None] and self.k.vehicle.get_speed(rl_id) > 0:
-                    # smallest acceptable distance headway
-                    min_dist_to_leader = self.k.vehicle.get_distance_preference(lead_id)
-                    # distance to leader
-                    dists_to_leader = max(self.k.vehicle.get_headway(rl_id), 0)
-                else:
-                    # if there is no leader
-                    dists_to_leader = -1
+                min_dist_to_leader_normalized = (
+                    self.k.vehicle.get_distance_preference(lead_id) / max_length
+                )
 
-                # penalize small headways for the follower of this AV
                 follower_id = self.k.vehicle.get_follower(rl_id)
-                if (
-                    follower_id not in ["", None]
-                    and self.k.vehicle.get_speed(rl_id) > 0
-                ):
-                    # smallest acceptable distance headway
-                    min_dist_to_follower = self.k.vehicle.get_distance_preference(
-                        follower_id
-                    )
-                    # distance to follower
-                    dists_to_follower = max(self.k.vehicle.get_headway(follower_id), 0)
-                else:
-                    # if there is no follower
-                    dists_to_follower = -1
+                min_dist_to_follower_normalized = (
+                    self.k.vehicle.get_distance_preference(follower_id) / max_length
+                )
 
                 reward = fancy_reward(
                     self,
-                    dists_to_leader,
-                    dists_to_follower,
-                    min_dist_to_leader,
-                    min_dist_to_follower,
+                    headways_normalized[1],
+                    headways_normalized[4],
+                    min_dist_to_leader_normalized,
+                    min_dist_to_follower_normalized,
                     fail=kwargs["fail"],
                 )
             rewards[rl_id] = reward

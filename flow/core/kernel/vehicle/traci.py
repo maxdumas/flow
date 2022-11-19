@@ -1189,9 +1189,11 @@ class TraCIVehicle(KernelVehicle):
 
     # get distance preference
     def get_distance_preference(self, veh_id, error=""):
+        if veh_id in {"", None}:
+            return 0.0
         if isinstance(veh_id, (list, np.ndarray)):
             return [self.get_distance_preference(vehID, error) for vehID in veh_id]
         if veh_id in self.__rl_ids:
             return self.__distance_preference.get("av", error)
-        else:
-            return self.__distance_preference.get("hdv", error)
+
+        return self.__distance_preference.get("hdv", error)

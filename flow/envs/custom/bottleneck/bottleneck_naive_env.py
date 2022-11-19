@@ -1,26 +1,23 @@
 import numpy as np
 from gym.spaces.box import Box
+
+from flow.controllers import (
+    ContinuousRouter,
+    IDMController_AvoidAVClumping,
+    LaneChangeController_AvoidAVClumping,
+    RLController,
+    SimLaneChangeController,
+)
 from flow.core.custom_rewards import naive_reward_2
-
-from flow.envs.multiagent.base import MultiEnv
-from flow.controllers.rlcontroller import RLController
-from flow.controllers import IDMController, ContinuousRouter, RLController, \
-                             IDMController_AvoidAVClumping, LaneChangeController_AvoidAVClumping, \
-                             SimLaneChangeController
-from flow.controllers.lane_change_controllers import SimLaneChangeController
-from flow.controllers.routing_controllers import ContinuousRouter
-from flow.core.params import InFlows, NetParams
-from flow.core.params import SumoCarFollowingParams, SumoLaneChangeParams
-from flow.core.params import VehicleParams
+from flow.core.params import (
+    InFlows,
+    NetParams,
+    SumoCarFollowingParams,
+    SumoLaneChangeParams,
+    VehicleParams,
+)
+from flow.core.state_fragments import get_surrounding_headways
 from flow.envs import MultiAgentBottleneckEnv
-
-from copy import deepcopy
-
-import numpy as np
-from gym.spaces.box import Box
-
-from flow.core import rewards
-from flow.envs.base import Env
 
 MAX_LANES = 4  # base number of largest number of lanes in the network
 EDGE_LIST = ["1", "2", "3", "4", "5"]  # Edge 1 is before the toll booth
@@ -70,22 +67,26 @@ ADDITIONAL_RL_ENV_PARAMS = {
 # Keys for VSL style experiments
 ADDITIONAL_VSL_ENV_PARAMS = {
     # number of controlled regions for velocity bottleneck controller
-    "controlled_segments": [("1", 1, True), ("2", 1, True), ("3", 1, True),
-                            ("4", 1, True), ("5", 1, True)],
+    "controlled_segments": [
+        ("1", 1, True),
+        ("2", 1, True),
+        ("3", 1, True),
+        ("4", 1, True),
+        ("5", 1, True),
+    ],
     # whether lanes in a segment have the same action or not
-    "symmetric":
-    False,
+    "symmetric": False,
     # which edges are observed
     "observed_segments": [("1", 1), ("2", 1), ("3", 1), ("4", 1), ("5", 1)],
     # whether the inflow should be reset on each rollout
-    "reset_inflow":
-    False,
+    "reset_inflow": False,
     # the range of inflows to reset on
-    "inflow_range": [1000, 2000]
+    "inflow_range": [1000, 2000],
 }
 
 START_RECORD_TIME = 0.0  # Time to start recording
 PERIOD = 10.0
+
 
 class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
     """BottleneckDesiredVelocityEnv.
@@ -108,21 +109,19 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         for RL vehicles making forward progress
     """
 
-    def __init__(self, env_params, sim_params, network, simulator='traci'):
+    def __init__(self, env_params, sim_params, network, simulator="traci"):
         """Initialize BottleneckDesiredVelocityEnv."""
         super().__init__(env_params, sim_params, network, simulator)
         for p in ADDITIONAL_VSL_ENV_PARAMS.keys():
             if p not in env_params.additional_params:
-                raise KeyError(
-                    'Environment parameter "{}" not supplied'.format(p))
-
+                raise KeyError('Environment parameter "{}" not supplied'.format(p))
 
         # default (edge, segment, controlled) status
         add_env_params = self.env_params.additional_params
         default = [(str(i), 1, True) for i in range(1, 6)]
-        super(MultiAgentBottleneckDesiredThroughputEnv_Naive, self).__init__(env_params,
-                                                           sim_params,
-                                                           network)
+        super(MultiAgentBottleneckDesiredThroughputEnv_Naive, self).__init__(
+            env_params, sim_params, network
+        )
         self.segments = add_env_params.get("controlled_segments", default)
 
         # number of segments for each edge
@@ -136,16 +135,13 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         ]
 
         # sum of segments
-        self.total_segments = int(
-            np.sum([segment[1] for segment in self.segments]))
+        self.total_segments = int(np.sum([segment[1] for segment in self.segments]))
         # sum of controlled segments
         segment_list = [segment[1] for segment in self.segments if segment[2]]
         self.total_controlled_segments = int(np.sum(segment_list))
 
         # list of controlled edges for comparison
-        self.controlled_edges = [
-            segment[0] for segment in self.segments if segment[2]
-        ]
+        self.controlled_edges = [segment[0] for segment in self.segments if segment[2]]
 
         additional_params = env_params.additional_params
 
@@ -171,8 +167,7 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         self.obs_slices = {}
         for edge, num_segments in self.obs_segments:
             edge_length = self.k.network.edge_length(edge)
-            self.obs_slices[edge] = np.linspace(0, edge_length,
-                                                num_segments + 1)
+            self.obs_slices[edge] = np.linspace(0, edge_length, num_segments + 1)
 
         # self.symmetric is True if all lanes in a segment
         # have same action, else False
@@ -183,9 +178,7 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         self.action_index = [0]
         for i, (edge, segment, controlled) in enumerate(self.segments[:-1]):
             if self.symmetric:
-                self.action_index += [
-                    self.action_index[i] + segment * controlled
-                ]
+                self.action_index += [self.action_index[i] + segment * controlled]
             else:
                 num_lanes = self.k.network.num_lanes(edge)
                 self.action_index += [
@@ -204,8 +197,7 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                     num_lanes = self.k.network.num_lanes(edge)
                     self.action_index[edge] = [action_list[index]]
                     action_list += [
-                        action_list[index] +
-                        num_segments * controlled * num_lanes
+                        action_list[index] + num_segments * controlled * num_lanes
                     ]
                 index += 1
 
@@ -220,8 +212,10 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         # outflow
         num_obs += 1
         # individual obs
-        num_obs += 8
-        return Box(low=-float("inf"), high=float("inf"), shape=(num_obs, ), dtype=np.float32)
+        num_obs += 12
+        return Box(
+            low=-float("inf"), high=float("inf"), shape=(num_obs,), dtype=np.float32
+        )
 
     @property
     def action_space(self):
@@ -238,8 +232,11 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         max_accel = add_params.get("max_accel")
         max_decel = add_params.get("max_decel")
         return Box(
-            low=-max_decel*self.sim_step, high=max_accel*self.sim_step,
-            shape=(int(action_size) + 3, ), dtype=np.float32)
+            low=-max_decel * self.sim_step,
+            high=max_accel * self.sim_step,
+            shape=(int(action_size) + 3,),
+            dtype=np.float32,
+        )
 
     def get_state(self):
         """Return aggregate statistics of different segments of the bottleneck.
@@ -278,15 +275,16 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
             lane_list = self.k.vehicle.get_lane(ids)
             pos_list = self.k.vehicle.get_position(ids)
             for i, id in enumerate(ids):
-                segment = np.searchsorted(self.obs_slices[edge],
-                                          pos_list[i]) - 1
+                segment = np.searchsorted(self.obs_slices[edge], pos_list[i]) - 1
                 if id in self.k.vehicle.get_rl_ids():
-                    rl_vehicle_speeds[segment, lane_list[i]] \
-                        += self.k.vehicle.get_speed(id)
+                    rl_vehicle_speeds[
+                        segment, lane_list[i]
+                    ] += self.k.vehicle.get_speed(id)
                     num_rl_vehicles[segment, lane_list[i]] += 1
                 else:
-                    vehicle_speeds[segment, lane_list[i]] \
-                        += self.k.vehicle.get_speed(id)
+                    vehicle_speeds[segment, lane_list[i]] += self.k.vehicle.get_speed(
+                        id
+                    )
                     num_vehicles[segment, lane_list[i]] += 1
 
             # normalize
@@ -304,21 +302,40 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         # compute the mean speed if the speed isn't zero
         num_rl = len(num_rl_vehicles_list)
         num_veh = len(num_vehicles_list)
-        mean_speed = np.nan_to_num([
-            vehicle_speeds_list[i] / unnorm_veh_list[i]
-            if int(unnorm_veh_list[i]) else 0 for i in range(num_veh)
-        ])
+        mean_speed = np.nan_to_num(
+            [
+                vehicle_speeds_list[i] / unnorm_veh_list[i]
+                if int(unnorm_veh_list[i])
+                else 0
+                for i in range(num_veh)
+            ]
+        )
         mean_speed_norm = mean_speed / 50
-        mean_rl_speed = np.nan_to_num([
-            rl_speeds_list[i] / unnorm_rl_list[i]
-            if int(unnorm_rl_list[i]) else 0 for i in range(num_rl)
-        ]) / 50
+        mean_rl_speed = (
+            np.nan_to_num(
+                [
+                    rl_speeds_list[i] / unnorm_rl_list[i]
+                    if int(unnorm_rl_list[i])
+                    else 0
+                    for i in range(num_rl)
+                ]
+            )
+            / 50
+        )
         inflow = self.k.vehicle.get_inflow_rate(10 * self.sim_step)
         inflow = inflow if inflow != 0.0 else 2000.0
         outflow = np.asarray(
-            self.k.vehicle.get_outflow_rate(10 * self.sim_step) / inflow)
-        global_obs = np.concatenate((num_vehicles_list, num_rl_vehicles_list,
-                               mean_speed_norm, mean_rl_speed, [outflow]))
+            self.k.vehicle.get_outflow_rate(10 * self.sim_step) / inflow
+        )
+        global_obs = np.concatenate(
+            (
+                num_vehicles_list,
+                num_rl_vehicles_list,
+                mean_speed_norm,
+                mean_rl_speed,
+                [outflow],
+            )
+        )
 
         # observation for each AV
         obs = {}
@@ -337,34 +354,27 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                 # in case leader is not visible
                 leader_is_av = 0.0
                 lead_speed = max_speed
-                lead_head = max_length
             else:
                 leader_is_av = float(lead_id in self.k.vehicle.get_rl_ids())
                 lead_speed = self.k.vehicle.get_speed(lead_id)
-                lead_head = self.k.vehicle.get_x_by_id(lead_id) \
-                            - self.k.vehicle.get_x_by_id(rl_id) \
-                            - self.k.vehicle.get_length(rl_id)
 
             if follower in ["", None]:
                 # in case follower is not visible
                 follower_is_av = 0.0
                 follow_speed = 0
-                follow_head = max_length
             else:
                 follower_is_av = float(follower in self.k.vehicle.get_rl_ids())
                 follow_speed = self.k.vehicle.get_speed(follower)
-                follow_head = self.k.vehicle.get_headway(follower)
 
             observation = np.array(
                 [
                     this_pos / max_length,
                     this_speed / max_speed,
                     (lead_speed - this_speed) / max_speed,
-                    lead_head / max_length,
                     (this_speed - follow_speed) / max_speed,
-                    follow_head / max_length,
                     leader_is_av,  # This is 1.0 if the leader is also an AV, 0.0 otherwise.
                     follower_is_av,  # This is 1.0 if the follower is also an AV, 0.0 otherwise.
+                    *get_surrounding_headways(self, rl_id),
                 ]
             )
 
@@ -387,15 +397,16 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                 lane = self.k.vehicle.get_lane(rl_id)
                 if edge:
                     # If in outer lanes, on a controlled edge, in a controlled lane
-                    if edge[0] != ':' and edge in self.controlled_edges:
+                    if edge[0] != ":" and edge in self.controlled_edges:
                         pos = self.k.vehicle.get_position(rl_id)
 
                         if not self.symmetric:
                             num_lanes = self.k.network.num_lanes(edge)
                             # find what segment we fall into
                             bucket = np.searchsorted(self.slices[edge], pos) - 1
-                            action = actions[int(lane) + bucket * num_lanes +
-                                                self.action_index[edge]]
+                            action = actions[
+                                int(lane) + bucket * num_lanes + self.action_index[edge]
+                            ]
                         else:
                             # find what segment we fall into
                             bucket = np.searchsorted(self.slices[edge], pos) - 1
@@ -433,33 +444,20 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         """Outflow rate over last ten seconds normalized to max of 1."""
         if self.env_params.evaluate:
             if self.time_counter == self.env_params.horizon:
-                reward = self.k.vehicle.get_outflow_rate(500)
-            else:
-                return 0
-        else:
-            if rl_actions is None:
-                return {}
+                return self.k.vehicle.get_outflow_rate(500)
+            return 0.0
 
-            rewards = {}
-            num_rl = len(self.k.vehicle.get_rl_ids())
-            for rl_id in self.k.vehicle.get_rl_ids():
-                if self.env_params.evaluate:
-                    # reward is speed of vehicle if we are in evaluation mode
-                    reward = self.k.vehicle.get_speed(rl_id)
-                elif kwargs["fail"]:
-                    # reward is 0 if a collision occurred
-                    reward = 0
-                else:
+        if rl_actions is None:
+            return {}
 
-                    reward = naive_reward_2(
-                        self,
-                        rl_id,
-                        fail=kwargs["fail"],
-                    )
-                rewards[rl_id] = reward / num_rl
+        if kwargs["fail"]:
+            return 0.0
 
-            return rewards
-
+        num_rl = len(self.k.vehicle.get_rl_ids())
+        return {
+            rl_id: naive_reward_2(self, rl_id) / num_rl
+            for rl_id in self.k.vehicle.get_rl_ids()
+        }
 
     def reset(self):
         """Reset the environment with a new inflow rate.
@@ -477,8 +475,9 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
         add_params = self.env_params.additional_params
         if add_params.get("reset_inflow"):
             inflow_range = add_params.get("inflow_range")
-            flow_rate = np.random.uniform(
-                min(inflow_range), max(inflow_range)) * self.scaling
+            flow_rate = (
+                np.random.uniform(min(inflow_range), max(inflow_range)) * self.scaling
+            )
 
             # We try this for 100 trials in case unexpected errors during
             # instantiation.
@@ -489,41 +488,47 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                     inflow.add(
                         veh_type="rl",  # FIXME: make generic
                         edge="1",
-                        vehs_per_hour=flow_rate * .25,
+                        vehs_per_hour=flow_rate * 0.25,
                         depart_lane="random",
-                        depart_speed=10)
+                        depart_speed=10,
+                    )
                     inflow.add(
                         veh_type="idm",
                         edge="1",
-                        vehs_per_hour=flow_rate * .75,
+                        vehs_per_hour=flow_rate * 0.75,
                         depart_lane="random",
-                        depart_speed=10)
+                        depart_speed=10,
+                    )
 
                     # all other network parameters should match the previous
                     # environment (we only want to change the inflow)
                     additional_net_params = {
                         "scaling": self.scaling,
-                        "speed_limit": self.net_params.
-                        additional_params['speed_limit']
+                        "speed_limit": self.net_params.additional_params["speed_limit"],
                     }
                     net_params = NetParams(
-                        inflows=inflow,
-                        additional_params=additional_net_params)
+                        inflows=inflow, additional_params=additional_net_params
+                    )
 
                     vehicles = VehicleParams()
                     vehicles.add(
                         veh_id="idm",
-                        acceleration_controller=(IDMController_AvoidAVClumping, {
-                            "noise": 0.2
-                        }),
-                        lane_change_controller=(LaneChangeController_AvoidAVClumping, {}),
+                        acceleration_controller=(
+                            IDMController_AvoidAVClumping,
+                            {"noise": 0.2},
+                        ),
+                        lane_change_controller=(
+                            LaneChangeController_AvoidAVClumping,
+                            {},
+                        ),
                         car_following_params=SumoCarFollowingParams(
                             speed_mode="all_checks",
                         ),
                         lane_change_params=SumoLaneChangeParams(
                             lane_change_mode="sumo_default",
                         ),
-                        num_vehicles=1 * self.scaling)
+                        num_vehicles=1 * self.scaling,
+                    )
                     vehicles.add(
                         veh_id="rl",
                         acceleration_controller=(RLController, {}),
@@ -535,7 +540,8 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                         lane_change_params=SumoLaneChangeParams(
                             lane_change_mode="sumo_default",
                         ),
-                        num_vehicles=1 * self.scaling)
+                        num_vehicles=1 * self.scaling,
+                    )
 
                     # recreate the network object
                     self.network = self.network.__class__(
@@ -543,7 +549,8 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                         vehicles=vehicles,
                         net_params=net_params,
                         initial_config=self.initial_config,
-                        traffic_lights=self.network.traffic_lights)
+                        traffic_lights=self.network.traffic_lights,
+                    )
                     observation = super().reset()
 
                     # reset the timer to zero
@@ -552,7 +559,7 @@ class MultiAgentBottleneckDesiredThroughputEnv_Naive(MultiAgentBottleneckEnv):
                     return observation
 
                 except Exception as e:
-                    print('error on reset ', e)
+                    print("error on reset ", e)
 
         # perform the generic reset function
         observation = super().reset()

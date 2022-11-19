@@ -774,3 +774,7 @@ class KernelVehicle(object, metaclass=ABCMeta):
     def get_road_grade(self, veh_id):
         """Return the road-grade of the vehicle with veh_id."""
         pass
+
+    @abstractmethod
+    def get_distance_preference(self, veh_id, error=""):
+        pass

@@ -871,3 +871,5 @@ class AimsunKernelVehicle(KernelVehicle):
     def get_max_speed(self, veh_id, error):
         """See parent class."""
         raise NotImplementedError
+    def get_distance_preference(self, veh_id, error=""):
+        raise NotImplementedError

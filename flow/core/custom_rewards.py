@@ -2,6 +2,7 @@
 import numpy as np
 from scipy.stats import norm
 from scipy.special import expit
+from flow.core.state_fragments import get_surrounding_headways
 
 from flow.envs.base import Env
 
@@ -162,12 +163,9 @@ def naive_reward(
     return 10.0 * r_is_moving * r_target_vel
 
 
-def naive_reward_2(env: Env, veh_id: str, fail=False):
+def naive_reward_2(env: Env, veh_id: str):
     """A reward function which rewards a vehicle that is not stopped and in a
     system with high throughput efficiency."""
-    if fail:
-        return 0.0
-
     # If the vehicle indicated by veh_id is almost stopped, we want the reward to be 0
     r_is_moving = penalize_close_to_stopping(env.k.vehicle.get_speed(veh_id))
     r_throughput_efficiency = reward_high_efficiency(env)
@@ -178,11 +176,6 @@ def naive_reward_2(env: Env, veh_id: str, fail=False):
 def fancy_reward_2(
     env: Env,
     veh_id: str,
-    dist_to_leader: float,
-    dist_to_follower: float,
-    desired_dist_to_leader: float,
-    desired_dist_to_follower: float,
-    fail=False,
 ):
     """
     A reward function which rewards a vehicle that is not stopped and in a
@@ -199,8 +192,9 @@ def fancy_reward_2(
     value will be smoothly interpolated to zero as the vehicle's speed decreases
     below the speed limit.
     """
+    max_length = env.k.network.length()
 
-    r_naive = naive_reward_2(env, veh_id, fail=fail)
+    r_naive = naive_reward_2(env, veh_id)
 
     v = env.k.vehicle.get_speed(veh_id)
     speed_limit = env.net_params.additional_params["speed_limit"]
@@ -208,11 +202,22 @@ def fancy_reward_2(
     # An s-shaped curve from 0 at v=0 to 1 at v=speed_limit
     s = exp(v / speed_limit)
 
-    r_penalize_too_close_to_leader = penalize_too_close_to_others(
-        dist_to_leader, s * desired_dist_to_leader
+    lead_id = env.k.vehicle.get_leader(veh_id)
+    desired_dist_to_leader = env.k.vehicle.get_distance_preference(lead_id) / max_length
+
+    follower_id = env.k.vehicle.get_follower(veh_id)
+    desired_dist_to_follower = (
+        env.k.vehicle.get_distance_preference(follower_id) / max_length
     )
+
+    headways_normalized = get_surrounding_headways(env, veh_id)
+
+    r_penalize_too_close_to_leader = penalize_too_close_to_others(
+        headways_normalized[1], s * desired_dist_to_leader
+    )
+
     r_penalize_too_close_to_follower = penalize_too_close_to_others(
-        dist_to_follower, s * desired_dist_to_follower
+        headways_normalized[4], s * desired_dist_to_follower
     )
 
     return r_penalize_too_close_to_leader * r_penalize_too_close_to_follower * r_naive
